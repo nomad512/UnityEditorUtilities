@@ -14,7 +14,7 @@ namespace IllTaco.Editor
 		private static Process _cmdProcess;
 
 		[MenuItem("IllTaco/Project Info _F1")]
-		public static void Open()
+		private static void Open()
 		{
 			var alreadyOpen = HasOpenInstances<ProjectInfoWindow>();
 			var window = GetWindow<ProjectInfoWindow>("Project Info");
