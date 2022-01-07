@@ -33,8 +33,8 @@ namespace IllTaco.Editor
 			{
 				switch (e.keyCode)
 				{
-					case KeyCode.C:		OpenCmd();			break;
-					case KeyCode.E:		OpenExplorer();		break;
+					case KeyCode.C: OpenCmd(); break;
+					case KeyCode.E: OpenExplorer(); break;
 				}
 			}
 
@@ -53,7 +53,6 @@ namespace IllTaco.Editor
 
 			// TODO: Implement these ideas
 			// - find git url and create link
-			// - button to open explorer here
 			// - show define symbols (maybe edit too?)
 		}
 
