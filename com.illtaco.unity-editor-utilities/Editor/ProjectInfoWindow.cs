@@ -3,16 +3,13 @@ namespace IllTaco.Editor
 {
 	using System;
 	using System.Diagnostics;
-	using System.Collections.Generic;
 	using System.Runtime.InteropServices;
-	using Microsoft.Win32;
 	using UnityEngine;
 	using UnityEditor;
+	using Debug = UnityEngine.Debug;
 
 	public class ProjectInfoWindow : EditorWindow
 	{
-		private static Process _cmdProcess;
-
 		[MenuItem("IllTaco/Project Info _F1")]
 		private static void Open()
 		{
@@ -36,20 +33,23 @@ namespace IllTaco.Editor
 			{
 				switch (e.keyCode)
 				{
-					case KeyCode.C:
-						OpenCmd();
-						break;
+					case KeyCode.C:		OpenCmd();			break;
+					case KeyCode.E:		OpenExplorer();		break;
 				}
 			}
 
 
 			EditorGUILayout.LabelField("Build Target", EditorUserBuildSettings.activeBuildTarget.ToString());
 
-
 			if (GUILayout.Button(new GUIContent("Open Command Prompt", "Launch a CMD window in project root. (C)")))
 			{
 				OpenCmd();
 			}
+			if (GUILayout.Button(new GUIContent("Open Explorer", "Open the project in Explorer. (E)")))
+			{
+				OpenExplorer();
+			}
+
 
 			// TODO: Implement these ideas
 			// - find git url and create link
@@ -59,26 +59,75 @@ namespace IllTaco.Editor
 
 		private void OpenCmd()
 		{
-			if (_cmdProcess != null && !_cmdProcess.HasExited)
+#if UNITY_EDITOR_WIN
+			Close();
+			const string key = "CmdProcessId";
+			var cmdProcessId = SessionState.GetInt(key, 0);
+			var gotFocus = false;
+
+			if (cmdProcessId > 0) // Refocus previous Cmd process.
 			{
-				//SetForegroundWindow(_cmdProcess.Handle);
-				//_cmdProcess.Kill();
-				return;
+				EnumWindowsCallback callback = (IntPtr hwnd, int lParam) =>
+				{
+					GetWindowThreadProcessId(hwnd, out uint processId); // NOTE: returns threadId
+					try
+					{
+						var ownerProcess = Process.GetProcessById((int)processId);
+						if (ownerProcess.Id == cmdProcessId)
+						{
+							SetForegroundWindow(hwnd);
+							gotFocus = true;
+						}
+					}
+					catch { }
+					return true;
+				};
+				EnumWindows(callback, 0);
 			}
 
-			var startInfo = new ProcessStartInfo
+			if (!gotFocus) // Launch a new Cmd process.
 			{
-				FileName = "cmd.exe",
-				WorkingDirectory = Application.dataPath,
-			};
-			_cmdProcess = new Process { StartInfo = startInfo };
-			_cmdProcess.Start();
-			UnityEngine.Debug.Log(_cmdProcess.ProcessName);
+				var startInfo = new ProcessStartInfo
+				{
+					FileName = "cmd.exe",
+					WorkingDirectory = Application.dataPath,
+				};
+				var cmdProcess = new Process { StartInfo = startInfo };
+				cmdProcess.Start();
+				SessionState.SetInt(key, cmdProcess.Id);
+			}
+#endif
 		}
 
+		private void OpenExplorer()
+		{
 #if UNITY_EDITOR_WIN
-		[DllImport("user32.dll")]
-		private static extern bool SetForegroundWindow(IntPtr hWnd);
+			Close();
+			var startInfo = new ProcessStartInfo
+			{
+				Arguments = "..",
+				FileName = "explorer.exe",
+				WorkingDirectory = Application.dataPath,
+			};
+			Process.Start(startInfo);
 #endif
+		}
+
+		#region DLLImport
+#if UNITY_EDITOR_WIN
+		[DllImport("user32.dll", SetLastError = true)]
+		static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+		public delegate bool EnumWindowsCallback(IntPtr hwnd, int lParam);
+		[DllImport("user32.dll")]
+		private static extern int EnumWindows(EnumWindowsCallback callPtr, int lParam);
+
+		[DllImport("user32.dll", CharSet = CharSet.Unicode, PreserveSig = true, SetLastError = true, ExactSpelling = true)]
+		public static extern int SetForegroundWindow(IntPtr hWnd);
+
+		[DllImport("user32.dll")]
+		public static extern bool AllowSetForegroundWindow(int dwProcessId);
+#endif
+		#endregion
 	}
 }
