@@ -3,13 +3,17 @@ namespace IllTaco.Editor
 {
 	using System;
 	using System.Diagnostics;
+	using System.IO;
 	using System.Runtime.InteropServices;
 	using UnityEngine;
 	using UnityEditor;
 	using Debug = UnityEngine.Debug;
 
+
 	public class ProjectInfoWindow : EditorWindow
 	{
+		#region Window
+
 		[MenuItem("IllTaco/Project Info _F1")]
 		private static void Open()
 		{
@@ -54,6 +58,10 @@ namespace IllTaco.Editor
 			{
 				OpenExplorer();
 			}
+			if (GUILayout.Button(new GUIContent("Open Editor.log", "Open the log of the most recent editor session.")))
+			{
+				OpenEditorLog();
+			}
 
 
 			// TODO: Implement these ideas
@@ -61,6 +69,12 @@ namespace IllTaco.Editor
 			// - show define symbols (maybe edit too?)
 		}
 
+		#endregion
+
+
+		#region User Actions
+
+		// TODO: open terminal on MacOS
 		private void OpenCmd()
 		{
 #if UNITY_EDITOR_WIN
@@ -103,6 +117,7 @@ namespace IllTaco.Editor
 #endif
 		}
 
+		// TODO: open finder on MacOS
 		private void OpenExplorer()
 		{
 #if UNITY_EDITOR_WIN
@@ -117,7 +132,19 @@ namespace IllTaco.Editor
 #endif
 		}
 
-#region DLLImport
+		// TODO: open editor log on MacOS
+		private void OpenEditorLog()
+		{
+#if UNITY_EDITOR_WIN
+			var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Unity", "Editor", "Editor.log");
+			Process.Start(path);
+#endif
+		} 
+
+		#endregion
+
+
+		#region DLLImport
 #if UNITY_EDITOR_WIN
 		[DllImport("user32.dll", SetLastError = true)]
 		static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
