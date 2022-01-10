@@ -13,7 +13,12 @@ namespace IllTaco.Editor
 		[MenuItem("IllTaco/Project Info _F1")]
 		private static void Open()
 		{
-			var alreadyOpen = HasOpenInstances<ProjectInfoWindow>();
+			var alreadyOpen = false;
+#if !UNITY_2019_OR_NEWER
+			FocusWindowIfItsOpen<ProjectInfoWindow>();
+#else
+			alreadyOpen = HasOpenInstances<ProjectInfoWindow>();
+#endif
 			var window = GetWindow<ProjectInfoWindow>("Project Info");
 			if (alreadyOpen)
 			{
@@ -112,7 +117,7 @@ namespace IllTaco.Editor
 #endif
 		}
 
-		#region DLLImport
+#region DLLImport
 #if UNITY_EDITOR_WIN
 		[DllImport("user32.dll", SetLastError = true)]
 		static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -127,6 +132,6 @@ namespace IllTaco.Editor
 		[DllImport("user32.dll")]
 		public static extern bool AllowSetForegroundWindow(int dwProcessId);
 #endif
-		#endregion
+#endregion
 	}
 }
