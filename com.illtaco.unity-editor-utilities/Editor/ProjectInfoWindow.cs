@@ -14,7 +14,7 @@ namespace IllTaco.Editor
 		private static void Open()
 		{
 			var alreadyOpen = false;
-#if !UNITY_2019_OR_NEWER
+#if !UNITY_2019_1_OR_NEWER
 			FocusWindowIfItsOpen<ProjectInfoWindow>();
 #else
 			alreadyOpen = HasOpenInstances<ProjectInfoWindow>();
