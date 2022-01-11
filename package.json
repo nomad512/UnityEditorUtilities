@@ -5,7 +5,7 @@
     "displayName": "Editor Utilities",
     "keywords": [ "unity" ],
     "license": "MIT",
-    "name": "com.illtaco.unity-editor-utilities",
+    "name": "com.nomad.unity-editor-utilities",
     "repository": "github:nomad512/UnityEditorUtilities",
     "unity": "2019.2",
     "unityRelease": "0f1",

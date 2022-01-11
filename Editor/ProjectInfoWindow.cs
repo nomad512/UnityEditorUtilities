@@ -80,7 +80,7 @@ namespace IllTaco.Editor
 
 		#region Window
 
-		[MenuItem("IllTaco/Project Info _F1")]
+		[MenuItem("Window/Nomad/Project Info _F1")]
 		private static void Open()
 		{
 			var alreadyOpen = _instance != null;
