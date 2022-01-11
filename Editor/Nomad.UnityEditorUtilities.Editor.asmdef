@@ -1,5 +1,5 @@
 {
-    "name": "IllTaco.UnityEditorUtilities.Editor",
+    "name": "Nomad.UnityEditorUtilities.Editor",
     "rootNamespace": "",
     "references": [],
     "includePlatforms": [
