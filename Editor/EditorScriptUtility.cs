@@ -1,5 +1,4 @@
-﻿
-namespace IllTaco.Editor
+﻿namespace Nomad
 {
     using System.Linq;
     using System.IO;

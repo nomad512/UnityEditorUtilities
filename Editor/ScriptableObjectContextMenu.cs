@@ -1,5 +1,4 @@
-﻿
-namespace IllTaco.Editor
+﻿namespace Nomad
 {
     using System.IO;
     using UnityEngine;

@@ -1,5 +1,4 @@
-
-namespace IllTaco.Editor
+namespace Nomad
 {
 	using System;
 	using System.Diagnostics;
@@ -8,8 +7,6 @@ namespace IllTaco.Editor
 	using System.Runtime.InteropServices;
 	using UnityEngine;
 	using UnityEditor;
-	using Debug = UnityEngine.Debug;
-	using System.Reflection;
 
 	public class ProjectInfoWindow : EditorWindow
 	{
