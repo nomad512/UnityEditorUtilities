@@ -1,13 +1,14 @@
 {
-    "author": "Damon Chandler",
-    "dependencies": { },
-    "description": "A collection of helpful additions to the Unity Editor.",
-    "displayName": "Nomad/Editor Utilities",
-    "keywords": [ "unity" ],
-    "license": "MIT",
-    "name": "com.nomad.unity-editor-utilities",
-    "repository": "github:nomad512/UnityEditorUtilities",
-    "unity": "2019.2",
-    "unityRelease": "0f1",
-    "version": "0.0.1"
+  "author": "Damon Chandler",
+  "description": "A collection of helpful additions to the Unity Editor.",
+  "displayName": "Nomad.EditorUtilities",
+  "keywords": [
+    "unity"
+  ],
+  "license": "MIT",
+  "name": "com.nomad.unity-editor-utilities",
+  "repository": "github:nomad512/UnityEditorUtilities",
+  "unity": "2019.2",
+  "unityRelease": "0f1",
+  "version": "0.0.1"
 }
