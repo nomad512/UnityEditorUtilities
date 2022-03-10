@@ -215,7 +215,7 @@ namespace Nomad
 				var startInfo = new ProcessStartInfo
 				{
 					FileName = "cmd.exe",
-					WorkingDirectory = Application.dataPath,
+					WorkingDirectory = Path.Combine(Application.dataPath, ".."),
 				};
 				var cmdProcess = new Process { StartInfo = startInfo };
 				cmdProcess.Start();
