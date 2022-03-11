@@ -25,7 +25,7 @@ namespace Nomad
         #region EditorWindow
         [MenuItem("Nomad/Window/Hierarchy Analyzer")]
         [MenuItem("Window/Nomad/Hierarchy Analyzer")]
-        private static HierarchyAnalyzer ShowWindow()
+        public static HierarchyAnalyzer ShowWindow()
         {
             var window = GetWindow<HierarchyAnalyzer>();
             var icon = AssetDatabase.LoadAssetAtPath<Texture>("Assets/Nomad/Gizmos/NomadIcon.png");

@@ -71,6 +71,14 @@ namespace Nomad
 				CanExecute = () => {return MatchesEditorPlatform(EditorPlaform.Windows) && !string.IsNullOrEmpty(_gitUrl); },
 				Tooltip = "Go to the Git URL in a web browser.",
 			},
+			new ProjectAction()
+			{
+				Label = "Hierarchy Analyzer",
+				Action = () => HierarchyAnalyzer.ShowWindow(),
+				CanExecute = () => { return true; },
+				Tooltip = "Go to the Git URL in a web browser.",
+				Hotkey = KeyCode.H,
+			},
 		};
 
 
