@@ -75,9 +75,10 @@ namespace Nomad
 
 
 
-		#region Window
+		#region EditorWindow
 
-		[MenuItem("Window/Nomad/Project Info _F1")]
+		[MenuItem("Nomad/Window/Project Info _F1")]
+		[MenuItem("Window/Nomad/Project Info")]
 		private static void Open()
 		{
 			var alreadyOpen = _instance != null;

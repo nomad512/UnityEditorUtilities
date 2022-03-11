@@ -22,8 +22,7 @@ namespace Nomad
         };
 
 
-
-        #region Unity Messages
+        #region EditorWindow
         [MenuItem("Nomad/Window/Hierarchy Analyzer")]
         [MenuItem("Window/Nomad/Hierarchy Analyzer")]
         private static HierarchyAnalyzer ShowWindow()
