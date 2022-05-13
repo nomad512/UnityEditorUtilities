@@ -7,6 +7,7 @@ namespace Nomad
 	using System.Runtime.InteropServices;
 	using UnityEngine;
 	using UnityEditor;
+	using Debug = UnityEngine.Debug;
 
 	public class ProjectInfoWindow : EditorWindow
 	{
@@ -36,7 +37,7 @@ namespace Nomad
 		private static ProjectInfoWindow _instance;
 
 		private static string _gitUrl => SessionState.GetString(kSessionKey_GitUrl, "");
-
+		private static string _gitDescribe;
 
 		private static ProjectAction[] _actions = new ProjectAction[]
 		{
@@ -68,7 +69,7 @@ namespace Nomad
 			{
 				Label = "Open Git URL",
 				Action = OpenGitUrl,
-				CanExecute = () => {return MatchesEditorPlatform(EditorPlaform.Windows) && !string.IsNullOrEmpty(_gitUrl); },
+				CanExecute = () => { return !string.IsNullOrEmpty(_gitUrl); },
 				Tooltip = "Go to the Git URL in a web browser.",
 			},
 			new ProjectAction()
@@ -129,9 +130,10 @@ namespace Nomad
 
 			// Draw project info.
 			var projectDirInfo = new DirectoryInfo(Application.dataPath).Parent;
-			EditorGUILayout.LabelField("Path", string.Join(" > ", projectDirInfo.FullName.Split('\\').Reverse().Take(2).Reverse().ToList()));
-			EditorGUILayout.LabelField("Build Target", EditorUserBuildSettings.activeBuildTarget.ToString());
-			if (!string.IsNullOrEmpty(_gitUrl)) EditorGUILayout.LabelField("Git", _gitUrl);
+			EditorGUILayout.LabelField(string.Join(" > ", projectDirInfo.FullName.Split('\\').Reverse().Take(2).Reverse().ToList()));
+			EditorGUILayout.LabelField(EditorUserBuildSettings.activeBuildTarget.ToString());
+			if (!string.IsNullOrEmpty(_gitUrl)) EditorGUILayout.LabelField(_gitUrl);
+			if (!string.IsNullOrEmpty(_gitDescribe)) EditorGUILayout.LabelField(_gitDescribe);
 
 			// Draw all Action buttons in a dynamic grid layout.
 			EditorGUILayout.BeginVertical();
@@ -179,7 +181,7 @@ namespace Nomad
 
 		private void Awake()
 		{
-			CacheGitUrl();
+			CacheGitInfo();
 			_instance = this;
 		}
 
@@ -262,7 +264,7 @@ namespace Nomad
 		}
 
 
-		private void CacheGitUrl()
+		private void CacheGitInfo()
 		{
 #if UNITY_EDITOR_WIN
 			var startInfo = new ProcessStartInfo
@@ -278,6 +280,21 @@ namespace Nomad
 			p.WaitForExit();
 			var gitUrl =  p.StandardOutput.ReadToEnd().Split('\n').FirstOrDefault();
 			SessionState.SetString(kSessionKey_GitUrl, gitUrl);
+
+			if (!string.IsNullOrEmpty(_gitUrl))
+			{
+				startInfo = new ProcessStartInfo
+				{
+					Arguments = "/c git describe --tags --long",
+					CreateNoWindow = true,
+					FileName = "cmd.exe",
+					RedirectStandardOutput = true,
+					UseShellExecute = false,
+					WorkingDirectory = Application.dataPath,
+				};
+				p = Process.Start(startInfo);
+				_gitDescribe = p.StandardOutput.ReadToEnd();
+			}
 #endif
 		}
 
