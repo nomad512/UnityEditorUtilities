@@ -4,8 +4,9 @@
     using System.IO;
     using UnityEngine;
     using UnityEditor;
+	using System.Reflection;
 
-    public static class EditorScriptUtility
+	internal static class EditorScriptUtility
     {
         /// <summary>
         /// Generates an Editor script for the selected script.
@@ -14,8 +15,7 @@
         private static void GenerateEditorForScript()
         {
             var ms = Selection.activeObject as MonoScript;
-            var scrObjType = ms.GetClass();
-            var methodInfo = typeof(EditorScriptUtility).GetMethod("GenerateEditorScript");
+            var methodInfo = typeof(EditorScriptUtility).GetMethod("GenerateEditorScript", BindingFlags.Static | BindingFlags.NonPublic);
             methodInfo.Invoke(null, new object[] { ms });
         }
 
@@ -35,7 +35,7 @@
         /// Creates a new text file containing a Custom Editor script for the given MonoScript's class type.
         /// Respects namespaces. 
         /// </summary>
-        public static void GenerateEditorScript(MonoScript monoScript)
+        internal static void GenerateEditorScript(MonoScript monoScript)
         {
             var classPath = monoScript.GetClass().ToString();
             var classPathNames = classPath.Split('.');
@@ -62,11 +62,8 @@
                 using (StreamWriter writer =
                     new StreamWriter(editorPath))
                 {
-                    writer.WriteLine("using UnityEngine;");
-                    writer.WriteLine("using UnityEditor;");
-                    writer.WriteLine("");
-
                     var hasNamespace = namespaceNames.Length > 0;
+                    var indention = hasNamespace ? "\t" : "";
 
                     // Namespace header
                     if (hasNamespace)
@@ -84,12 +81,16 @@
                         writer.WriteLine("{");
                     }
 
-                    var tab = hasNamespace ? "\t" : "";
-                    writer.WriteLine(tab + string.Format("[CustomEditor(typeof({0}))]", className));
-                    writer.WriteLine(tab + string.Format("public class {0}Editor : Editor ", className));
-                    writer.WriteLine(tab + "{");
-                    writer.WriteLine(tab + "\t");
-                    writer.WriteLine(tab + "}");
+
+                    writer.WriteLine(indention + "using UnityEngine;");
+                    writer.WriteLine(indention + "using UnityEditor;");
+                    writer.WriteLine("");
+
+                    writer.WriteLine(indention + string.Format("[CustomEditor(typeof({0}))]", className));
+                    writer.WriteLine(indention + string.Format("public class {0}Editor : Editor ", className));
+                    writer.WriteLine(indention + "{");
+                    writer.WriteLine(indention + "\t");
+                    writer.WriteLine(indention + "}");
 
                     // Namespace footer
                     if (hasNamespace)

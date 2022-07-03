@@ -7,7 +7,7 @@ namespace Nomad
     using UnityEditor;
     using Object = UnityEngine.Object;
 
-    public class HierarchyAnalyzer : EditorWindow
+    internal class HierarchyAnalyzer : EditorWindow
     {
         private static List<Component> _componentBuffer = new List<Component>();
         private static List<GameObject> _rootBuffer = new List<GameObject>();
@@ -25,7 +25,7 @@ namespace Nomad
         #region EditorWindow
         [MenuItem("Nomad/Window/Hierarchy Analyzer", false, 10)]
         [MenuItem("Window/Nomad/Hierarchy Analyzer", false, 10)]
-        public static HierarchyAnalyzer ShowWindow()
+        internal static HierarchyAnalyzer ShowWindow()
         {
             var window = GetWindow<HierarchyAnalyzer>();
             window.titleContent = new GUIContent("Hierachy Analyzer", EditorUtilities.Icons.Hierarchy16);
@@ -61,21 +61,21 @@ namespace Nomad
 
 
         #region Classes
-        public abstract class Tab
+        private abstract class Tab
         {
-            public abstract string Name { get; }
-            public abstract void Draw();
+            internal abstract string Name { get; }
+            internal abstract void Draw();
         }
 
-        public class MissingComponentsTab : Tab
+        private class MissingComponentsTab : Tab
         {
-            public override string Name => "Missing Components";
+            internal override string Name => "Missing Components";
 
             private List<GameObject> _gameObjectsWithMissingComponents = new List<GameObject>();
             private Vector2 _scrollPosition;
             private bool _didSearch;
 
-            public override void Draw()
+            internal override void Draw()
             {
                 // Press Buttons to do new search
                 EditorGUILayout.BeginHorizontal();
@@ -129,9 +129,9 @@ namespace Nomad
             }
         }
 
-        public class ComponentManifest : Tab
+        private class ComponentManifest : Tab
         {
-            public override string Name => "Component Manifest";
+            internal override string Name => "Component Manifest";
 
             private Dictionary<Type, List<Component>> _results = new Dictionary<Type, List<Component>>();
 
@@ -139,7 +139,7 @@ namespace Nomad
             private SortMode _sortMode;
             private enum SortMode { Name, FullName, Count }
 
-            public override void Draw()
+            internal override void Draw()
             {
 				// Press Buttons to do new search
 				EditorGUILayout.BeginHorizontal();

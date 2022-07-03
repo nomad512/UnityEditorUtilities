@@ -1,13 +1,13 @@
-﻿using System.IO;
-using System.Linq;
-using UnityEngine;
-using UnityEditor;
-using UnityEngine.SceneManagement;
-using UnityEditor.SceneManagement;
-
-namespace Nomad
+﻿namespace Nomad
 {
-    public class SceneDirectoryWindow : EditorWindow
+	using System.IO;
+	using System.Linq;
+	using UnityEngine;
+	using UnityEditor;
+	using UnityEngine.SceneManagement;
+	using UnityEditor.SceneManagement;
+
+    internal class SceneDirectoryWindow : EditorWindow
     {
         private string[] _tabs = new string[] { "Build Scenes", "All Scenes" };
         private int _tabIndex = 0;
@@ -18,7 +18,7 @@ namespace Nomad
 
         [MenuItem("Nomad/Window/Scene Directory", false, 10)]
         [MenuItem("Window/Nomad/Scene Directory", false, 10)]
-        public static SceneDirectoryWindow ShowWindow()
+        internal static SceneDirectoryWindow ShowWindow()
         {
             var window = GetWindow<SceneDirectoryWindow>();
             window.titleContent = new GUIContent("Directory", EditorUtilities.Icons.SceneDirectory16);

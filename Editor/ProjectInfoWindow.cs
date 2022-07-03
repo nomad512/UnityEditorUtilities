@@ -18,7 +18,7 @@ namespace Nomad
 	/// An editor window accessed by pressing F1. Displays some info about the current project and provides quick access to other utilities. 
 	/// Press F1 again to dismiss.
 	/// </summary>
-	public class ProjectInfoWindow : EditorWindow
+	internal class ProjectInfoWindow : EditorWindow
 	{
 		private const string kSessionKey_GitUrl = "GitUrl";
 		
@@ -35,11 +35,11 @@ namespace Nomad
 		private delegate bool CanExecuteDelegate();
 		private struct ProjectAction
 		{
-			public string Label;
-			public ActionDelegate Action;
-			public CanExecuteDelegate CanExecute;
-			public string Tooltip;
-			public KeyCode Hotkey;
+			internal string Label;
+			internal ActionDelegate Action;
+			internal CanExecuteDelegate CanExecute;
+			internal string Tooltip;
+			internal KeyCode Hotkey;
 		}
 
 
@@ -331,15 +331,15 @@ namespace Nomad
 		[DllImport("user32.dll", SetLastError = true)]
 		static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-		public delegate bool EnumWindowsCallback(IntPtr hwnd, int lParam);
+		internal delegate bool EnumWindowsCallback(IntPtr hwnd, int lParam);
 		[DllImport("user32.dll")]
 		private static extern int EnumWindows(EnumWindowsCallback callPtr, int lParam);
 
 		[DllImport("user32.dll", CharSet = CharSet.Unicode, PreserveSig = true, SetLastError = true, ExactSpelling = true)]
-		public static extern int SetForegroundWindow(IntPtr hWnd);
+		internal static extern int SetForegroundWindow(IntPtr hWnd);
 
 		[DllImport("user32.dll")]
-		public static extern bool AllowSetForegroundWindow(int dwProcessId);
+		internal static extern bool AllowSetForegroundWindow(int dwProcessId);
 #endif
 		#endregion
 	}
