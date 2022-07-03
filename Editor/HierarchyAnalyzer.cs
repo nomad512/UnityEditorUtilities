@@ -36,6 +36,17 @@ namespace Nomad
         {
 
         }
+
+		private void OnEnable()
+		{
+            Selection.selectionChanged += Repaint;
+		}
+
+		private void OnDisable()
+		{
+            Selection.selectionChanged -= Repaint;
+        }
+
         private void OnGUI()
         {
             GUI.enabled = true;
@@ -130,20 +141,22 @@ namespace Nomad
 
             public override void Draw()
             {
-                // Press Buttons to do new search
-                EditorGUILayout.BeginHorizontal();
-                {
-                    GUI.enabled = (Selection.gameObjects.Length > 0);
-                    if (GUILayout.Button("Analyze Selection"))
-                    {
-                        _results.Clear();
+				// Press Buttons to do new search
+				EditorGUILayout.BeginHorizontal();
+				{
+					GUI.enabled = (Selection.gameObjects.Length > 0);
+					GUI.color = GUI.enabled ? new Color(0.5f, 1, 0.5f) : Color.white;
+					GUI.backgroundColor = GUI.enabled ? Color.green : Color.white;
+					if (GUILayout.Button("Analyze Selection", GUILayout.Height(30)))
+					{
+						_results.Clear();
 
-                        // Remove any hierarchies from selection if they are a child of another selected hierarchy
-                        var hierarchyRoots = Selection.gameObjects.ToList();
-                        foreach (var go in Selection.gameObjects)
-                        {
-                            foreach (var other in Selection.gameObjects)
-                            {
+						// Remove any hierarchies from selection if they are a child of another selected hierarchy
+						var hierarchyRoots = Selection.gameObjects.ToList();
+						foreach (var go in Selection.gameObjects)
+						{
+							foreach (var other in Selection.gameObjects)
+							{
                                 if (go != other && go.transform.IsChildOf(other.transform))
                                 {
                                     hierarchyRoots.Remove(go);
@@ -161,10 +174,12 @@ namespace Nomad
                         SortResults();
                     }
                     GUI.enabled = true;
+                    GUI.backgroundColor = Color.white;
+					GUI.color = Color.white;
                 }
-                EditorGUILayout.EndHorizontal();
+				EditorGUILayout.EndHorizontal();
 
-                GUILayout.Space(8);
+				GUILayout.Space(8);
 
                 // Show search results
                 GUI.enabled = true;
