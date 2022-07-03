@@ -9,6 +9,15 @@ namespace Nomad
 	using UnityEditor;
 	using Debug = UnityEngine.Debug;
 
+
+	// TODO: OpenCmd for MacOS
+	// TODO: OpenExploerer for MacOS	
+	// TODO: OpenEditorLog for MacOS
+
+	/// <summary>
+	/// An editor window accessed by pressing F1. Displays some info about the current project and provides quick access to other utilities. 
+	/// Press F1 again to dismiss.
+	/// </summary>
 	public class ProjectInfoWindow : EditorWindow
 	{
 		private const string kSessionKey_GitUrl = "GitUrl";
@@ -77,8 +86,16 @@ namespace Nomad
 				Label = "Hierarchy Analyzer",
 				Action = () => HierarchyAnalyzer.ShowWindow(),
 				CanExecute = () => { return true; },
-				Tooltip = "Go to the Git URL in a web browser.",
+				Tooltip = "Open the Hierarchy Analyzer window.",
 				Hotkey = KeyCode.H,
+			},
+			new ProjectAction()
+			{
+				Label = "Scene Directory",
+				Action = () => SceneDirectoryWindow.ShowWindow(),
+				CanExecute = () => { return true; },
+				Tooltip = "Open the Scene Directory window.",
+				Hotkey = KeyCode.S,
 			},
 		};
 
@@ -86,12 +103,13 @@ namespace Nomad
 
 		#region EditorWindow
 
-		[MenuItem("Nomad/Window/Project Info _F1")]
-		[MenuItem("Window/Nomad/Project Info")]
+		[MenuItem("Nomad/Window/Project Info _F1", false, 1)]
+		[MenuItem("Window/Nomad/Project Info", false, 1)]
 		private static void Open()
 		{
 			var alreadyOpen = _instance != null;
-			var window = GetWindow<ProjectInfoWindow>("Project Info");
+			var window = GetWindow<ProjectInfoWindow>();
+			window.titleContent = new GUIContent("Project Info", EditorUtilities.Icons.Info16);
 			if (alreadyOpen)
 			{
 				window.Close();
@@ -193,7 +211,6 @@ namespace Nomad
 		#endregion
 
 
-		// TODO: open terminal on MacOS
 		private static void OpenCmd()
 		{
 #if UNITY_EDITOR_WIN
@@ -235,7 +252,6 @@ namespace Nomad
 #endif
 		}
 
-		// TODO: open finder on MacOS
 		private static void OpenExplorer()
 		{
 #if UNITY_EDITOR_WIN
@@ -249,7 +265,6 @@ namespace Nomad
 #endif
 		}
 
-		// TODO: open editor log on MacOS
 		private static void OpenEditorLog()
 		{
 #if UNITY_EDITOR_WIN

@@ -23,14 +23,12 @@ namespace Nomad
 
 
         #region EditorWindow
-        [MenuItem("Nomad/Window/Hierarchy Analyzer")]
-        [MenuItem("Window/Nomad/Hierarchy Analyzer")]
+        [MenuItem("Nomad/Window/Hierarchy Analyzer", false, 10)]
+        [MenuItem("Window/Nomad/Hierarchy Analyzer", false, 10)]
         public static HierarchyAnalyzer ShowWindow()
         {
             var window = GetWindow<HierarchyAnalyzer>();
-            var icon = AssetDatabase.LoadAssetAtPath<Texture>("Assets/Nomad/Gizmos/NomadIcon.png");
-            var titleContent = new GUIContent("Hierachy Analyzer", icon);
-            window.titleContent = titleContent;
+            window.titleContent = new GUIContent("Hierachy Analyzer", EditorUtilities.Icons.Hierarchy16);
             return window;
         }
 

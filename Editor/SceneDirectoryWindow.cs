@@ -7,7 +7,7 @@ using UnityEditor.SceneManagement;
 
 namespace Nomad
 {
-    public class ScenesDirectoryWindow : EditorWindow
+    public class SceneDirectoryWindow : EditorWindow
     {
         private string[] _tabs = new string[] { "Build Scenes", "All Scenes" };
         private int _tabIndex = 0;
@@ -16,13 +16,12 @@ namespace Nomad
         private Vector2 _scrollPosition;
         private string[] _allScenePaths;
 
-        [MenuItem("Window/Nomad/Scene Directory")]
-        private static ScenesDirectoryWindow ShowWindow()
+        [MenuItem("Nomad/Window/Scene Directory", false, 10)]
+        [MenuItem("Window/Nomad/Scene Directory", false, 10)]
+        public static SceneDirectoryWindow ShowWindow()
         {
-            var window = GetWindow<ScenesDirectoryWindow>();
-            var icon = AssetDatabase.LoadAssetAtPath<Texture>("Assets/Nomad/Gizmos/NomadIcon.png");
-            var titleContent = new GUIContent("Directory", icon);
-            window.titleContent = titleContent;
+            var window = GetWindow<SceneDirectoryWindow>();
+            window.titleContent = new GUIContent("Directory", EditorUtilities.Icons.SceneDirectory16);
             return window;
         }
 
