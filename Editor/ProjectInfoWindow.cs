@@ -21,7 +21,7 @@ namespace Nomad
 	internal class ProjectInfoWindow : EditorWindow
 	{
 		private const string kSessionKey_GitUrl = "GitUrl";
-		
+
 		[Flags]
 		private enum EditorPlaform
 		{
@@ -293,7 +293,7 @@ namespace Nomad
 			};
 			var p = Process.Start(startInfo);
 			p.WaitForExit();
-			var gitUrl =  p.StandardOutput.ReadToEnd().Split('\n').FirstOrDefault();
+			var gitUrl = p.StandardOutput.ReadToEnd().Split('\n').FirstOrDefault();
 			SessionState.SetString(kSessionKey_GitUrl, gitUrl);
 
 			if (!string.IsNullOrEmpty(_gitUrl))
