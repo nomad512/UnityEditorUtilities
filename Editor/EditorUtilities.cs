@@ -13,5 +13,10 @@ namespace Nomad
 			internal static Texture Hierarchy16 => AssetDatabase.LoadAssetAtPath<Texture>($"Packages/{PackageName}/Gizmos/Hierarchy@16.png");
 			internal static Texture SceneDirectory16 => AssetDatabase.LoadAssetAtPath<Texture>($"Packages/{PackageName}/Gizmos/SceneDirectory@16.png");
 		}
+
+		internal static class Prefs
+		{
+			internal static string SceneDirectoryTab = "Nomad_EditorUtilies_SceneDirectoryTab";
+		}
 	}
 }

@@ -34,16 +34,20 @@ namespace Nomad
         private void OnEnable()
         {
             LoadAllScenes();
+
+            _tabIndex = EditorPrefs.GetInt(EditorUtilities.Prefs.SceneDirectoryTab, 0);
         }
 
         private void OnGUI()
         {
             GUI.enabled = !Application.isPlaying;
 
+            _tabIndex = Mathf.Clamp(_tabIndex, 0, _tabs.Length - 1);
             _tabIndex = GUILayout.Toolbar(_tabIndex, _tabs);
             if (_tabIndex != _cacheTabIndex)
             {
                 _cacheTabIndex = _tabIndex;
+                EditorPrefs.SetInt(EditorUtilities.Prefs.SceneDirectoryTab, _tabIndex);
                 LoadAllScenes();
             }
 
