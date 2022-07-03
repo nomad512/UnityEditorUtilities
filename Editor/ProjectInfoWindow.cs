@@ -294,6 +294,7 @@ namespace Nomad
 				};
 				p = Process.Start(startInfo);
 				_gitDescribe = p.StandardOutput.ReadToEnd();
+				_gitDescribe = _gitDescribe.Split('\n')[0]; // Discard addtional lines.
 			}
 #endif
 		}
