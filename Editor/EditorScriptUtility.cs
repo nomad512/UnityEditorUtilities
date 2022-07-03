@@ -41,7 +41,6 @@
             var classPathNames = classPath.Split('.');
             var className = classPathNames[classPathNames.Length - 1];
             var namespaceNames = new string[0];
-            Debug.Log(classPathNames.Length);
             if (classPathNames.Length > 1)
             {
                 namespaceNames = classPathNames.ToList().GetRange(0, classPathNames.Length - 1).ToArray();
