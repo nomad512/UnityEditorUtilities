@@ -14,7 +14,7 @@
 		/// <summary>
 		/// Creates an asset of the selected ScriptableObject script type, if one is selected
 		/// </summary>
-		[MenuItem("Assets/Create ScriptableObject Asset")]
+		[MenuItem("Assets/Nomad Editor Utilities/Create ScriptableObject Asset")]
 		private static void CreateScriptableObject()
 		{
 			var ms = Selection.activeObject as MonoScript;
@@ -28,7 +28,7 @@
 		/// Returns true if the Selection's active object is a script that derives from ScriptableObject
 		/// </summary>
 		/// <returns></returns>
-		[MenuItem("Assets/Create ScriptableObject Asset", true)]
+		[MenuItem("Assets/Nomad Editor Utilities/Create ScriptableObject Asset", true)]
 		private static bool ValidateScriptableObjectMonoScriptIsSelected()
 		{
 			var ms = Selection.activeObject as MonoScript;

@@ -5,24 +5,49 @@
 	using UnityEngine;
 	using UnityEditor;
 	using System.Reflection;
+	using UnityEditorInternal;
 
 	internal static class EditorScriptUtility
 	{
 		/// <summary>
 		/// Generates an Editor script for the selected script.
 		/// </summary>
-		[MenuItem("Assets/Generate Editor Script")]
+		[MenuItem("Assets/Nomad Editor Utilities/Generate Editor Script")]
 		private static void GenerateEditorForScript()
 		{
-			var ms = Selection.activeObject as MonoScript;
+			var monoScript = Selection.activeObject as MonoScript;
 			var methodInfo = typeof(EditorScriptUtility).GetMethod("GenerateEditorScript", BindingFlags.Static | BindingFlags.NonPublic);
-			methodInfo.Invoke(null, new object[] { ms });
+			methodInfo.Invoke(null, new object[] { monoScript });
+		}
+
+		/// <summary>
+		/// Finds a AssemblyDefinitionAsset that follows the pattern "{assembly definition name}.Editor".
+		/// </summary>
+		/// <param name="monoScript"></param>
+		/// <returns></returns>
+		private static AssemblyDefinitionAsset FindEditorAssembly(MonoScript monoScript)
+		{
+			string sourceAsmName = monoScript.GetClass().Assembly.GetName().Name; // Cache the assembly name to compare to assemblies referenced by name
+			string editorAsmName = $"{sourceAsmName}.Editor";
+
+			var allAsmdefGuids = AssetDatabase.FindAssets("t:asmdef", null);
+			for (int i = 0; i < allAsmdefGuids.Length; i++)
+			{
+				var path = AssetDatabase.GUIDToAssetPath(allAsmdefGuids[i]);
+				var asmdef = AssetDatabase.LoadAssetAtPath<AssemblyDefinitionAsset>(path);
+				if (asmdef && asmdef.name == editorAsmName)
+				{
+					return asmdef;
+				}
+			}
+
+			return null;
 		}
 
 		/// <summary>
 		/// Returns true if the Selection's active object is a script.
 		/// </summary>
-		[MenuItem("Assets/Generate Editor Script", true)]
+		[MenuItem("Assets/Nomad Editor Utilities/Generate Editor Script", true)]
 		private static bool ValidateMonoScriptIsSelected()
 		{
 			var ms = Selection.activeObject as MonoScript;
@@ -47,16 +72,27 @@
 			}
 
 			var scriptPath = AssetDatabase.GetAssetPath(monoScript);
-			var scriptDir = Path.GetDirectoryName(scriptPath);
-			var edtiorDir = Path.Combine(scriptDir, "Editor");
-			if (!Directory.Exists(edtiorDir))
-			{
-				Directory.CreateDirectory(edtiorDir);
-			}
-			edtiorDir = edtiorDir.Replace('\\', '/');
-			var editorPath = edtiorDir + string.Format("/{0}Editor", className) + ".cs";
+			var scriptDirectory = Path.GetDirectoryName(scriptPath);
 
-			Debug.Log("Generating Editor Script for " + classPath, monoScript);
+			// Determine destination path.
+			string editorDirectory;
+			var editorAssembly = FindEditorAssembly(monoScript);
+			if (editorAssembly)
+			{
+				editorDirectory = Path.GetDirectoryName(AssetDatabase.GetAssetPath(editorAssembly));
+			}
+			else
+			{
+				editorDirectory = Path.Combine(scriptDirectory, "Editor");
+			}
+			if (!Directory.Exists(editorDirectory))
+			{
+				Directory.CreateDirectory(editorDirectory);
+			}
+			editorDirectory = editorDirectory.Replace('\\', '/');
+			var editorPath = editorDirectory + string.Format("/{0}Editor", className) + ".cs";
+
+			var success = false;
 			if (!File.Exists(editorPath))
 			{
 				using (StreamWriter writer =
@@ -97,6 +133,8 @@
 					{
 						writer.WriteLine("}");
 					}
+
+					success = true;
 				}
 			}
 			AssetDatabase.Refresh();
@@ -104,6 +142,18 @@
 			var obj = AssetDatabase.LoadAssetAtPath(editorPath, typeof(Object));
 			Selection.activeObject = obj;
 			EditorUtility.FocusProjectWindow();
+			if (success)
+			{
+				Debug.Log($"Generated Editor Script: {classPath}", obj);
+			}
+			else if (obj)
+			{
+				Debug.Log($"Script already exists: {editorPath}", obj);
+			}
+			else
+			{
+				Debug.LogError($"Failed to generate Editor Script for {classPath}", monoScript);
+			}
 		}
 	}
 }
