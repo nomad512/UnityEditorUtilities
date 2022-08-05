@@ -1,5 +1,5 @@
 {
-    "name": "Nomad.UnityEditorUtilities.Editor",
+    "name": "Nomad.EditorUtilities.Editor",
     "rootNamespace": "",
     "references": [],
     "includePlatforms": [

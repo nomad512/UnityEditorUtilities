@@ -1,14 +1,14 @@
 {
   "author": "Damon Chandler",
-  "description": "A collection of helpful additions to the Unity Editor.",
+  "description": "A collection of helpful additions to the Unity Editor. This package can be safely added or removed at any time, since all of its features are designed to add zero dependencies to the project.",
   "displayName": "Nomad.EditorUtilities",
   "keywords": [
     "unity"
   ],
   "license": "MIT",
-  "name": "com.nomad.unity-editor-utilities",
+  "name": "com.nomad.editor-utilities",
   "repository": "github:nomad512/UnityEditorUtilities",
   "unity": "2019.2",
   "unityRelease": "0f1",
-  "version": "0.2.0"
+  "version": "0.3.0"
 }
