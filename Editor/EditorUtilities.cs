@@ -5,7 +5,7 @@ namespace Nomad
 
 	internal static class EditorUtilities
 	{
-		internal static readonly string PackageName = "com.nomad.unity-editor-utilities";
+		internal static readonly string PackageName = "com.nomad.editor-utilities";
 
 		internal static class Icons
 		{
