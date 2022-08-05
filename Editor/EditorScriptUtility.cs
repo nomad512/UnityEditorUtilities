@@ -62,6 +62,8 @@
 		/// </summary>
 		internal static void GenerateEditorScript(MonoScript monoScript)
 		{
+			var type = monoScript.GetClass();
+			var isStatic = type.IsAbstract && type.IsSealed;
 			var classPath = monoScript.GetClass().ToString();
 			var classPathNames = classPath.Split('.');
 			var className = classPathNames[classPathNames.Length - 1];
@@ -99,7 +101,8 @@
 					new StreamWriter(editorPath))
 				{
 					var hasNamespace = namespaceNames.Length > 0;
-					var indention = hasNamespace ? "\t" : "";
+					var tab = "\t";
+					var indention = hasNamespace ? tab : "";
 
 					// Namespace header
 					if (hasNamespace)
@@ -122,10 +125,16 @@
 					writer.WriteLine(indention + "using UnityEditor;");
 					writer.WriteLine("");
 
-					writer.WriteLine(indention + string.Format("[CustomEditor(typeof({0}))]", className));
-					writer.WriteLine(indention + string.Format("public class {0}Editor : Editor ", className));
+					writer.WriteLine(indention + string.Format($"[CustomEditor(typeof({className}))]"));
+					writer.WriteLine(indention + string.Format($"public class {className}Editor : Editor "));
 					writer.WriteLine(indention + "{");
-					writer.WriteLine(indention + "\t");
+					writer.WriteLine(indention + tab);
+					if (!isStatic)
+					{
+						writer.WriteLine(indention + tab + "[DrawGizmo(GizmoType.InSelectionHierarchy | GizmoType.NotInSelectionHierarchy | GizmoType.Pickable)]");
+						writer.WriteLine(indention + tab + $"private static void DrawHandles({className} {char.ToLowerInvariant(className[0]) + className.Substring(1)}, GizmoType gizmoType) {{}}");
+					}
+					writer.WriteLine(indention + tab);
 					writer.WriteLine(indention + "}");
 
 					// Namespace footer
