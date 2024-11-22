@@ -1,4 +1,4 @@
-﻿namespace Nomad
+﻿namespace Nomad.EditorUtilities
 {
 	using System.IO;
 	using System.Linq;
@@ -21,7 +21,7 @@
 		internal static SceneDirectoryWindow ShowWindow()
 		{
 			var window = GetWindow<SceneDirectoryWindow>();
-			window.titleContent = new GUIContent("Directory", EditorUtilities.Icons.SceneDirectory16);
+			window.titleContent = new GUIContent("Directory", Icons.SceneDirectory16);
 			return window;
 		}
 
@@ -35,7 +35,7 @@
 		{
 			LoadAllScenes();
 
-			_tabIndex = EditorPrefs.GetInt(EditorUtilities.Prefs.SceneDirectoryTab, 0);
+			_tabIndex = EditorPrefs.GetInt(Prefs.SceneDirectoryTab, 0);
 		}
 
 		private void OnGUI()
@@ -47,7 +47,7 @@
 			if (_tabIndex != _cacheTabIndex)
 			{
 				_cacheTabIndex = _tabIndex;
-				EditorPrefs.SetInt(EditorUtilities.Prefs.SceneDirectoryTab, _tabIndex);
+				EditorPrefs.SetInt(Prefs.SceneDirectoryTab, _tabIndex);
 				LoadAllScenes();
 			}
 

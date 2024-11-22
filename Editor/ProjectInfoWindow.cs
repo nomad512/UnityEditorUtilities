@@ -1,4 +1,4 @@
-namespace Nomad
+namespace Nomad.EditorUtilities
 {
 	using System;
 	using System.Diagnostics;
@@ -7,8 +7,6 @@ namespace Nomad
 	using System.Runtime.InteropServices;
 	using UnityEngine;
 	using UnityEditor;
-	using Debug = UnityEngine.Debug;
-
 
 	// TODO: OpenCmd for MacOS
 	// TODO: OpenExploerer for MacOS	
@@ -97,6 +95,14 @@ namespace Nomad
 				Tooltip = "Open the Scene Directory window.",
 				Hotkey = KeyCode.S,
 			},
+			new ProjectAction()
+			{
+				Label = "Project Navigator",
+				Action = () => ProjectNavigator.ShowWindow(),
+				CanExecute = () => { return true; },
+				Tooltip = "Open the Project Navigator window.",
+				Hotkey = KeyCode.N,
+			},
 		};
 
 
@@ -109,7 +115,7 @@ namespace Nomad
 		{
 			var alreadyOpen = _instance != null;
 			var window = GetWindow<ProjectInfoWindow>();
-			window.titleContent = new GUIContent("Project Info", EditorUtilities.Icons.Info16);
+			window.titleContent = new GUIContent("Project Info", Icons.Info16);
 			if (alreadyOpen)
 			{
 				window.Close();

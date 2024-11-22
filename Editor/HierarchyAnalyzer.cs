@@ -1,4 +1,4 @@
-namespace Nomad
+namespace Nomad.EditorUtilities
 {
 	using System;
 	using System.Linq;
@@ -9,18 +9,16 @@ namespace Nomad
 
 	internal class HierarchyAnalyzer : EditorWindow
 	{
-		private static List<Component> _componentBuffer = new List<Component>();
-		private static List<GameObject> _rootBuffer = new List<GameObject>();
-		private int _tabIndex = 0;
+		private static List<Component> _componentBuffer = new();
+		
+		private int _tabIndex;
 		private delegate bool FilterHandler(GameObject gameObject);
 		private delegate void AnalyzeHandler(GameObject gameObject);
 
-		private Tab[] _tabs = new Tab[]
-		{
+		private Tab[] _tabs = {
 			new ComponentManifest(),
 			new MissingComponentsTab()
 		};
-
 
 		#region EditorWindow
 		[MenuItem("Nomad/Window/Hierarchy Analyzer", false, 10)]
@@ -28,13 +26,8 @@ namespace Nomad
 		internal static HierarchyAnalyzer ShowWindow()
 		{
 			var window = GetWindow<HierarchyAnalyzer>();
-			window.titleContent = new GUIContent("Hierachy Analyzer", EditorUtilities.Icons.Hierarchy16);
+			window.titleContent = new GUIContent("Hierachy Analyzer", Icons.Hierarchy16);
 			return window;
-		}
-
-		private void Awake()
-		{
-
 		}
 
 		private void OnEnable()
@@ -61,11 +54,6 @@ namespace Nomad
 
 
 		#region Classes
-		private abstract class Tab
-		{
-			internal abstract string Name { get; }
-			internal abstract void Draw();
-		}
 
 		private class MissingComponentsTab : Tab
 		{
