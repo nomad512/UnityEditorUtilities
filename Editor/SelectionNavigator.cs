@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Nomad.EditorUtilities
@@ -11,55 +12,30 @@ namespace Nomad.EditorUtilities
     {
         private const string HistoryPrefKey = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PinnedPrefKey = "Nomad_EditorUtilities_ProjectNav_Pinned";
+        
         private static event Action _updatedHistory;
-
         private static int _historyMaxSize = 10;
-        private static List<Object> _history;
+        private static bool _skipNextSelection;
         private static int _historyCurrentSize;
+        private static List<SelectionItem> _historyItems;
+        private static List<SelectionItem> _pinnedItems;
+
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
         private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
-
-        private static List<Object> _pinned;
-
-        private List<SelectableObject> _historyObjects;
-
         private Vector2 _historyScrollPosition;
+        private TabBar _tabBar;
 
+        
         [InitializeOnLoadMethod]
         internal static void Initialize()
         {
             Selection.selectionChanged += OnSelectionChangedGlobal;
-            _history = new List<Object>(_historyMaxSize);
-            _pinned = new List<Object>();
-            Debug.Log($"[{typeof(SelectionNavigator)}] Initialized.");
+            _historyItems = new List<SelectionItem>();
+            _pinnedItems = new List<SelectionItem>();
+            Debug.Log($"[{nameof(SelectionNavigator)}] Initialized.");
         }
-
-
-        private TabBar _tabBar;
-
-        private static void OnSelectionChangedGlobal()
-        {
-            if (Selection.activeObject == null) return;
-            // if (Selection.activeObject is DefaultAsset) return; // Ignore folders.
-
-            _history.Remove(Selection.activeObject);
-            if (_history.Count == _historyMaxSize)
-            {
-                _history.RemoveAt(_historyMaxSize - 1);
-            }
-
-            _history.Insert(0, Selection.activeObject);
-
-            var so = new SelectableObject(Selection.activeObject);
-
-            _updatedHistory?.Invoke();
-        }
-
-        private void OnSelectionChange()
-        {
-            Repaint();
-        }
-
+        
+        
         [MenuItem("Nomad/Window/Project Navigator", false, 10)]
         [MenuItem("Window/Nomad/Project Navigator", false, 10)]
         internal static SelectionNavigator ShowWindow()
@@ -67,6 +43,48 @@ namespace Nomad.EditorUtilities
             var window = GetWindow<SelectionNavigator>();
             window.titleContent = new GUIContent("Selection Navigator", Icons.SceneDirectory16);
             return window;
+        }
+
+
+
+        /// Called when the active selection changed, whether an instance of the window exists or not.
+        private static void OnSelectionChangedGlobal()
+        {
+            if (_skipNextSelection)
+            {
+                _skipNextSelection = false;
+                return;
+            }
+            if (Selection.activeObject == null) return;
+            // if (Selection.activeObject is DefaultAsset) return; // Ignore folders.
+
+            var item = new SelectionItem(Selection.activeObject);
+
+            // Remove duplicates.
+            for (int i = _historyItems.Count - 1; i >= 0; i--)
+            {
+                if (_historyItems[i].Object == item.Object)
+                {
+                    _historyItems.RemoveAt(i);
+                }
+            }
+            
+            // Limit size.
+            if (_historyItems.Count == _historyMaxSize)
+            {
+                _historyItems.RemoveAt(_historyMaxSize - 1);
+            }
+
+            // Add to beginning of list.
+            _historyItems.Insert(0, item);
+
+            _updatedHistory?.Invoke();
+        }
+
+        /// Called when the selection changes, for each instance of the window. 
+        private void OnSelectionChange()
+        {
+            Repaint();
         }
 
         private void OnEnable()
@@ -78,13 +96,13 @@ namespace Nomad.EditorUtilities
 
             _updatedHistory += OnUpdatedHistory;
 
-            LoadHistory();
+            LoadFromDisk();
         }
 
         private void OnDisable()
         {
             _updatedHistory -= OnUpdatedHistory;
-            SaveHistory();
+            SaveToDisk();
         }
 
         private void OnUpdatedHistory()
@@ -99,11 +117,11 @@ namespace Nomad.EditorUtilities
 
         private void Sanitize()
         {
-            for (int i = _history.Count - 1; i >= 0; i--)
+            for (int i = _historyItems.Count - 1; i >= 0; i--)
             {
-                if (_history[i] == null)
+                if (_historyItems[i].Type is SelectableType.Invalid) // TODO: keep object instances that may be in a temporarily invalid context (i.e. from an inactive scene)
                 {
-                    _history.RemoveAt(i);
+                    _historyItems.RemoveAt(i);
                     Debug.Log("Removed a missing item");
                 }
             }
@@ -119,11 +137,12 @@ namespace Nomad.EditorUtilities
                     _historyScrollPosition = scrollView.scrollPosition;
                     using (new EditorGUI.DisabledScope(false))
                     {
-                        foreach (var item in _history)
+                        foreach (var item in _historyItems)
                         {
+                            var obj = item.Object;
                             using (var row = new EditorGUILayout.HorizontalScope())
                             {
-                                if (item == Selection.activeObject)
+                                if (obj == Selection.activeObject)
                                 {
                                     var isFocused = focusedWindow == this;
                                     EditorGUI.DrawRect(row.rect,
@@ -133,12 +152,11 @@ namespace Nomad.EditorUtilities
 
                                 // EditorGUILayout.ObjectField(item, typeof(Object), false);
                                 if (GUILayout.Button(
-                                        new GUIContent(item.name,
-                                            EditorGUIUtility.ObjectContent(item, item.GetType()).image),
+                                        new GUIContent(obj.name,
+                                            EditorGUIUtility.ObjectContent(obj, item.GetType()).image),
                                         EditorStyles.label, GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
                                 {
-                                    Selection.activeObject = item;
-                                    EditorGUIUtility.PingObject(item);
+                                    SetSelection(obj);
                                 }
                             }
                         }
@@ -156,68 +174,66 @@ namespace Nomad.EditorUtilities
         {
             using (new EditorGUI.DisabledScope(true))
             {
-                foreach (var item in _pinned)
+                foreach (var item in _pinnedItems)
                 {
-                    // EditorGUILayout.ObjectField(item, typeof(Object), false);
+                    var obj = item.Object;
+                    if (obj == null) continue;
                     if (GUILayout.Button(
-                            new GUIContent(" " + item.name, EditorGUIUtility.ObjectContent(item, item.GetType()).image),
+                            new GUIContent(" " + obj, EditorGUIUtility.ObjectContent(obj, obj.GetType()).image),
                             EditorStyles.label /*, GUILayout.MaxHeight(17f)*/))
                     {
-                        Selection.activeObject = item;
-                        EditorGUIUtility.PingObject(item);
+                        SetSelection(obj);
                     }
                 }
             }
         }
 
-        private void ClearHistory()
+        private void SetSelection(Object obj)
         {
-            _history.Clear();
+            _skipNextSelection = true;
+            Selection.activeObject = obj;
+            EditorGUIUtility.PingObject(obj);
         }
 
-        private static void SaveHistory()
+        private void ClearHistory()
+        {
+            _historyItems.Clear();
+        }
+
+        private static void SaveToDisk()
         {
             var sb = new StringBuilder();
 
-            foreach (var item in _history)
+            foreach (var item in _historyItems)
             {
-                // TODO: do this when first acquiring the item, not when saving it
-                var path = AssetDatabase.GetAssetPath(item);
-                var guid = AssetDatabase.AssetPathToGUID(path);
-                sb.Append(guid);
+                item.AppendSerialization(sb);
                 sb.Append(';');
             }
 
             EditorPrefs.SetString(HistoryPrefKey, sb.ToString());
-            Debug.Log($"[{typeof(SelectionNavigator)}] Saved selection history to disk. ({_history.Count} items)");
+            // Debug.Log($"[{nameof(SelectionNavigator)}] Saved selection history to disk. ({_historyItems.Count} items)");
+            // Debug.Log(sb.ToString());
         }
 
-        private void LoadHistory()
+        private void LoadFromDisk()
         {
             var historyRaw = EditorPrefs.GetString(HistoryPrefKey, string.Empty);
-            var historyGuids = historyRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
-            // _history.Clear();
-            _historyObjects ??= new List<SelectableObject>(historyGuids.Length);
-            Debug.Log($"loading {historyGuids.Length} items.");
+            var serializedHistoryItems = historyRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            _historyItems ??= new List<SelectionItem>(serializedHistoryItems.Length);
 
-            // _historyObjects.Clear();
-            foreach (var guid in historyGuids)
+            foreach (var serializedItem in serializedHistoryItems)
             {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var asset = AssetDatabase.LoadAssetAtPath<Object>(path);
-                if (_history.Contains(asset)) continue;
-                _history.Add(asset);
-                _historyObjects.Add(new SelectableObject());
+                var item = SelectionItem.FromSerialized(serializedItem);
+                if (_historyItems.Any(x => item.Object == x.Object)) continue; // Skip duplicate.
+                _historyItems.Add(item);
             }
 
             var pinnedRaw = EditorPrefs.GetString(PinnedPrefKey, string.Empty);
-            var pinnedGuids = pinnedRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            var serializedPinnedItems = pinnedRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
 
-            foreach (var guid in pinnedGuids)
+            foreach (var serializedItem in serializedPinnedItems)
             {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var asset = AssetDatabase.LoadAssetAtPath<Object>(path);
-                _pinned.Add(asset);
+                // _pinned.Add(asset);
             }
 
             // SaveHistory();
@@ -226,32 +242,103 @@ namespace Nomad.EditorUtilities
 
     internal enum SelectableType
     {
+        Invalid,
         Asset,
         Instance
     }
-    
-    internal struct SelectableObject
+
+    internal struct SelectionItem
     {
         internal SelectableType Type;
         internal readonly string Guid;
         internal readonly int InstanceId;
-        // internal bool IsSelected;
 
-        public SelectableObject(Object obj)
+        internal Object Object { get; private set; }
+
+        internal SelectionItem(Object obj)
         {
+            if (obj == null)
+            {
+                Type = SelectableType.Invalid;
+                Guid = string.Empty;
+                InstanceId = 0;
+                Object = null;
+                return;
+            }
+
+            Object = obj;
+
             if (EditorUtility.IsPersistent(Selection.activeObject))
             {
                 Type = SelectableType.Asset;
                 Guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(obj));
-                InstanceId = -1;
-                Debug.Log($"Guid={Guid}");
+                InstanceId = 0;
             }
             else
             {
                 Type = SelectableType.Instance;
                 Guid = string.Empty;
                 InstanceId = obj.GetInstanceID();
-                Debug.Log($"InstanceId={InstanceId}");
+            }
+        }
+
+        internal static SelectionItem FromSerialized(string serialized)
+        {
+            var split = serialized.Split(':');
+            if (split.Length != 2)
+            {
+                Debug.LogWarning($"Could parse item from history: {serialized}");
+                return new SelectionItem();
+            }
+
+            switch (split[0])
+            {
+                case "A":
+                {
+                    var guid = split[1];
+                    var path = AssetDatabase.GUIDToAssetPath(split[1]);
+                    var obj = AssetDatabase.LoadAssetAtPath<Object>(path);
+                    if (obj)
+                    {
+                        return new SelectionItem(obj);
+                    }
+
+                    Debug.LogWarning($"Could not load asset from history: {guid}");
+                    
+                    return new SelectionItem();
+                }
+                case "I":
+                {
+                    if (int.TryParse(split[1], out var instanceId))
+                    {
+                        var obj = EditorUtility.InstanceIDToObject(instanceId);
+                        if (obj)
+                        {
+                            return new SelectionItem(obj);
+                        }
+                    }
+
+                    Debug.LogWarning($"Could not find object instance from history: {instanceId}");
+                    return new SelectionItem();
+                }
+
+                default:
+                    throw new FormatException();
+            }
+        }
+
+        internal void AppendSerialization(StringBuilder stringBuilder)
+        {
+            switch (Type)
+            {
+                case SelectableType.Asset:
+                    stringBuilder.Append("A:").Append(Guid);
+                    break;
+                case SelectableType.Instance:
+                    stringBuilder.Append("I:").Append(InstanceId);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
     }
