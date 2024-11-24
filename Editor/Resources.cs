@@ -18,5 +18,6 @@ namespace Nomad.EditorUtilities
 	internal static class Prefs
 	{
 		internal static readonly string SceneDirectoryTab = "Nomad_EditorUtilities_SceneDirectoryTab";
+		internal static readonly string ProjectNavigatorTab = "Nomad_EditorUtilities_ProjectNavigatorTab";
 	}
 }

@@ -93,15 +93,15 @@ namespace Nomad.EditorUtilities
 				Action = () => SceneDirectoryWindow.ShowWindow(),
 				CanExecute = () => { return true; },
 				Tooltip = "Open the Scene Directory window.",
-				Hotkey = KeyCode.S,
+				Hotkey = KeyCode.D,
 			},
 			new ProjectAction()
 			{
-				Label = "Project Navigator",
-				Action = () => ProjectNavigator.ShowWindow(),
+				Label = "Selection Navigator",
+				Action = () => SelectionNavigator.ShowWindow(),
 				CanExecute = () => { return true; },
 				Tooltip = "Open the Project Navigator window.",
-				Hotkey = KeyCode.N,
+				Hotkey = KeyCode.S,
 			},
 		};
 
