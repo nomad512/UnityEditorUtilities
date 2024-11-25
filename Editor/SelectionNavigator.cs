@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using UnityEditor.PackageManager;
+using UnityEditor.SceneManagement;
+using UnityEngine.Serialization;
 
 namespace Nomad.EditorUtilities
 {
@@ -12,7 +15,7 @@ namespace Nomad.EditorUtilities
     {
         private const string HistoryPrefKey = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PinnedPrefKey = "Nomad_EditorUtilities_ProjectNav_Pinned";
-        
+
         private static event Action _updatedHistory;
         private static int _historyMaxSize = 10;
         private static bool _skipNextSelection;
@@ -25,17 +28,17 @@ namespace Nomad.EditorUtilities
         private Vector2 _historyScrollPosition;
         private TabBar _tabBar;
 
-        
+
         [InitializeOnLoadMethod]
         internal static void Initialize()
         {
             Selection.selectionChanged += OnSelectionChangedGlobal;
             _historyItems = new List<SelectionItem>();
             _pinnedItems = new List<SelectionItem>();
-            Debug.Log($"[{nameof(SelectionNavigator)}] Initialized.");
+            // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
         }
-        
-        
+
+
         [MenuItem("Nomad/Window/Project Navigator", false, 10)]
         [MenuItem("Window/Nomad/Project Navigator", false, 10)]
         internal static SelectionNavigator ShowWindow()
@@ -46,7 +49,6 @@ namespace Nomad.EditorUtilities
         }
 
 
-
         /// Called when the active selection changed, whether an instance of the window exists or not.
         private static void OnSelectionChangedGlobal()
         {
@@ -55,28 +57,26 @@ namespace Nomad.EditorUtilities
                 _skipNextSelection = false;
                 return;
             }
+
             if (Selection.activeObject == null) return;
             // if (Selection.activeObject is DefaultAsset) return; // Ignore folders.
 
-            var item = new SelectionItem(Selection.activeObject);
+            var item = new SelectionItem(new SerializableSelectionData(Selection.activeObject));
 
-            // Remove duplicates.
-            for (int i = _historyItems.Count - 1; i >= 0; i--)
+            for (var i = _historyItems.Count - 1; i >= 0; i--)
             {
                 if (_historyItems[i].Object == item.Object)
                 {
-                    _historyItems.RemoveAt(i);
+                    _historyItems.RemoveAt(i); // Remove duplicate.
                 }
             }
-            
-            // Limit size.
+
             if (_historyItems.Count == _historyMaxSize)
             {
-                _historyItems.RemoveAt(_historyMaxSize - 1);
+                _historyItems.RemoveAt(_historyMaxSize - 1); // Limit Size.
             }
 
-            // Add to beginning of list.
-            _historyItems.Insert(0, item);
+            _historyItems.Insert(0, item); // Add to beginning of list.
 
             _updatedHistory?.Invoke();
         }
@@ -96,13 +96,19 @@ namespace Nomad.EditorUtilities
 
             _updatedHistory += OnUpdatedHistory;
 
-            LoadFromDisk();
+            LoadHistoryFromDisk();
         }
 
         private void OnDisable()
         {
             _updatedHistory -= OnUpdatedHistory;
-            SaveToDisk();
+            SaveHistoryToDisk();
+        }
+
+        private void OnGUI()
+        {
+            UpdateKeys();
+            _tabBar.Draw();
         }
 
         private void OnUpdatedHistory()
@@ -110,19 +116,62 @@ namespace Nomad.EditorUtilities
             Repaint();
         }
 
-        private void OnGUI()
+        private void UpdateKeys()
         {
-            _tabBar.Draw();
+            if (Event.current.type == EventType.KeyDown)
+            {
+                switch (Event.current.keyCode)
+                {
+                    case KeyCode.UpArrow: selectNext(-1); break;
+                    case KeyCode.DownArrow: selectNext(1); break;
+                }
+            }
+
+            return;
+
+            void selectNext(int steps)
+            {
+                var index = -1;
+                for (int i = 0; i < _historyItems.Count; i++)
+                {
+                    if (_historyItems[i].Object == Selection.activeObject)
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+
+                if (index == -1)
+                {
+                    index = 0;
+                }
+                else
+                {
+                    index += steps;
+                    index = Mathf.Clamp(index, 0, _historyItems.Count - 1);
+                }
+
+                SetSelection(_historyItems[index].Object);
+            }
         }
 
         private void Sanitize()
         {
             for (int i = _historyItems.Count - 1; i >= 0; i--)
             {
-                if (_historyItems[i].Type is SelectableType.Invalid) // TODO: keep object instances that may be in a temporarily invalid context (i.e. from an inactive scene)
+                var item = _historyItems[i];
+                // TODO: keep object instances that may be in a temporarily invalid context (i.e. from an inactive scene)
+                if (item.Object == null)
                 {
-                    _historyItems.RemoveAt(i);
-                    Debug.Log("Removed a missing item");
+                    if (item.Data.ContextType is SelectableContextType.Project)
+                    {
+                        _historyItems.RemoveAt(i);
+                        Debug.Log("Removed a missing item");
+                    }
+                    else
+                    {
+                        Debug.Log($"Could not resolve item in the current context. ({item.Data.InstanceId})");
+                    }
                 }
             }
         }
@@ -140,8 +189,10 @@ namespace Nomad.EditorUtilities
                         foreach (var item in _historyItems)
                         {
                             var obj = item.Object;
+                            if (obj == null) continue;
                             using (var row = new EditorGUILayout.HorizontalScope())
                             {
+                                // Highlight active object.
                                 if (obj == Selection.activeObject)
                                 {
                                     var isFocused = focusedWindow == this;
@@ -149,23 +200,68 @@ namespace Nomad.EditorUtilities
                                         isFocused ? _activeHighlightColor : _inactiveHighlightColor);
                                 }
 
+                                // // Draw context
+                                // if (item.SceneAsset != null)
+                                // {
+                                //     var r = row.rect;
+                                //     r.width *= 0.50f;
+                                //     r.x = row.rect.x + row.rect.width - r.width;
+                                //     GUI.Label(r,
+                                //         new GUIContent(item.SceneAsset.name,
+                                //             EditorGUIUtility.ObjectContent(item.SceneAsset, item.SceneAsset.GetType()).image),
+                                //         EditorStyles.miniLabel);
+                                // }
 
-                                // EditorGUILayout.ObjectField(item, typeof(Object), false);
+                                // Draw item as button.
                                 if (GUILayout.Button(
                                         new GUIContent(obj.name,
                                             EditorGUIUtility.ObjectContent(obj, item.GetType()).image),
-                                        EditorStyles.label, GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
+                                        EditorStyles.label,
+                                        GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
                                 {
                                     SetSelection(obj);
+                                }
+
+                                // Draw Context
+                                if (item.SceneAsset != null)
+                                {
+                                    if (GUILayout.Button( 
+                                            EditorGUIUtility.IconContent("d_SceneAsset Icon"),
+                                            GUILayout.MaxWidth(32),
+                                            GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
+                                    {
+                                        
+                                    }
+                                }
+                                if (item.PrefabAsset != null)
+                                {
+                                    Debug.Log(item.PrefabAsset.GetType());
+                                    if (GUILayout.Button( 
+                                            EditorGUIUtility.IconContent("d_Prefab Icon"),
+                                            GUILayout.MaxWidth(32),
+                                            GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
+                                    {
+                                        
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                if (GUILayout.Button("Clear"))
+                using (new GUILayout.HorizontalScope())
                 {
-                    ClearHistory();
+                    if (GUILayout.Button("Clear"))
+                    {
+                        ClearLoadedHistory();
+                    }
+
+                    if (GUILayout.Button("Reload"))
+                    {
+                        SaveHistoryToDisk();
+                        ClearLoadedHistory();
+                        LoadHistoryFromDisk();
+                    }
                 }
             }
         }
@@ -195,38 +291,51 @@ namespace Nomad.EditorUtilities
             EditorGUIUtility.PingObject(obj);
         }
 
-        private void ClearHistory()
+        private void ClearLoadedHistory()
         {
             _historyItems.Clear();
         }
 
-        private static void SaveToDisk()
+        private static void SaveHistoryToDisk()
         {
-            var sb = new StringBuilder();
-
+            var jsonBuilder = new StringBuilder();
             foreach (var item in _historyItems)
             {
-                item.AppendSerialization(sb);
-                sb.Append(';');
+                jsonBuilder.AppendLine(JsonUtility.ToJson(item));
             }
-
-            EditorPrefs.SetString(HistoryPrefKey, sb.ToString());
-            // Debug.Log($"[{nameof(SelectionNavigator)}] Saved selection history to disk. ({_historyItems.Count} items)");
-            // Debug.Log(sb.ToString());
         }
 
-        private void LoadFromDisk()
+        private void LoadHistoryFromDisk()
         {
             var historyRaw = EditorPrefs.GetString(HistoryPrefKey, string.Empty);
-            var serializedHistoryItems = historyRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
-            _historyItems ??= new List<SelectionItem>(serializedHistoryItems.Length);
+            var lines = historyRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            _historyItems ??= new List<SelectionItem>(lines.Length);
 
-            foreach (var serializedItem in serializedHistoryItems)
+            foreach (var line in lines)
             {
-                var item = SelectionItem.FromSerialized(serializedItem);
-                if (_historyItems.Any(x => item.Object == x.Object)) continue; // Skip duplicate.
+                // Debug.Log(line);
+                var data = JsonUtility.FromJson<SerializableSelectionData>(line);
+                var item = new SelectionItem(data);
+                // if (item.Object == null) continue; // Item could not resolve an object.
+                switch (item.Data.Type)
+                {
+                    case SelectableType.Invalid:
+                        continue;
+                    case SelectableType.Asset:
+                        if (_historyItems.Any(x => item.Data.Guid == x.Data.Guid)) continue; // Skip duplicate asset.
+                        break;
+                    case SelectableType.Instance:
+                        if (_historyItems.Any(x => item.Data.InstanceId == x.Data.InstanceId))
+                            continue; // Skip duplicate instance.
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
                 _historyItems.Add(item);
             }
+
+            return;
 
             var pinnedRaw = EditorPrefs.GetString(PinnedPrefKey, string.Empty);
             var serializedPinnedItems = pinnedRaw.Split(';', StringSplitOptions.RemoveEmptyEntries);
@@ -238,107 +347,115 @@ namespace Nomad.EditorUtilities
 
             // SaveHistory();
         }
-    }
 
-    internal enum SelectableType
-    {
-        Invalid,
-        Asset,
-        Instance
-    }
-
-    internal struct SelectionItem
-    {
-        internal SelectableType Type;
-        internal readonly string Guid;
-        internal readonly int InstanceId;
-
-        internal Object Object { get; private set; }
-
-        internal SelectionItem(Object obj)
+        public enum SelectableType
         {
-            if (obj == null)
-            {
-                Type = SelectableType.Invalid;
-                Guid = string.Empty;
-                InstanceId = 0;
-                Object = null;
-                return;
-            }
+            Invalid,
+            Asset,
+            Instance
+        }
 
-            Object = obj;
+        internal enum SelectableContextType
+        {
+            Invalid,
+            Project,
+            Scene,
+            Prefab,
+        }
 
-            if (EditorUtility.IsPersistent(Selection.activeObject))
+        [Serializable]
+        public struct SerializableSelectionData
+        {
+            public SelectableType Type;
+            public string Guid;
+            public int InstanceId;
+            public SelectableContextType ContextType;
+            public string ContextGuid;
+
+            public SerializableSelectionData(Object obj)
             {
-                Type = SelectableType.Asset;
-                Guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(obj));
-                InstanceId = 0;
-            }
-            else
-            {
-                Type = SelectableType.Instance;
-                Guid = string.Empty;
-                InstanceId = obj.GetInstanceID();
+                if (obj == null)
+                {
+                    Type = default;
+                    Guid = default;
+                    InstanceId = default;
+                    ContextType = default;
+                    ContextGuid = default;
+                    return;
+                }
+
+                if (EditorUtility.IsPersistent(Selection.activeObject))
+                {
+                    Type = SelectableType.Asset;
+                    Guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(obj));
+                    InstanceId = 0;
+                    ContextType = SelectableContextType.Project;
+                    ContextGuid = string.Empty;
+                }
+                else
+                {
+                    Type = SelectableType.Instance;
+                    Guid = string.Empty;
+                    InstanceId = obj.GetInstanceID();
+
+                    var go = obj as GameObject;
+                    var prefabStage = PrefabStageUtility.GetPrefabStage(go);
+                    if (prefabStage != null)
+                    {
+                        ContextType = SelectableContextType.Prefab;
+                        ContextGuid = AssetDatabase.GUIDFromAssetPath(prefabStage.assetPath).ToString();
+                    }
+                    else
+                    {
+                        ContextType = SelectableContextType.Scene;
+                        ContextGuid = AssetDatabase.AssetPathToGUID(go.scene.path);
+                    }
+                }
             }
         }
 
-        internal static SelectionItem FromSerialized(string serialized)
+        private class SelectionItem
         {
-            var split = serialized.Split(':');
-            if (split.Length != 2)
+            internal readonly SerializableSelectionData Data;
+            internal readonly Object Object;
+            internal readonly SceneAsset SceneAsset;
+            internal readonly Object PrefabAsset;
+
+            public SelectionItem(SerializableSelectionData data)
             {
-                Debug.LogWarning($"Could parse item from history: {serialized}");
-                return new SelectionItem();
-            }
+                Data = data;
 
-            switch (split[0])
-            {
-                case "A":
+                switch (data.Type)
                 {
-                    var guid = split[1];
-                    var path = AssetDatabase.GUIDToAssetPath(split[1]);
-                    var obj = AssetDatabase.LoadAssetAtPath<Object>(path);
-                    if (obj)
-                    {
-                        return new SelectionItem(obj);
-                    }
-
-                    Debug.LogWarning($"Could not load asset from history: {guid}");
-                    
-                    return new SelectionItem();
-                }
-                case "I":
-                {
-                    if (int.TryParse(split[1], out var instanceId))
-                    {
-                        var obj = EditorUtility.InstanceIDToObject(instanceId);
-                        if (obj)
-                        {
-                            return new SelectionItem(obj);
-                        }
-                    }
-
-                    Debug.LogWarning($"Could not find object instance from history: {instanceId}");
-                    return new SelectionItem();
+                    case SelectableType.Invalid:
+                        break;
+                    case SelectableType.Asset:
+                        Object = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.Guid));
+                        break;
+                    case SelectableType.Instance:
+                        Object = EditorUtility.InstanceIDToObject(data.InstanceId);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
 
-                default:
-                    throw new FormatException();
-            }
-        }
-
-        internal void AppendSerialization(StringBuilder stringBuilder)
-        {
-            switch (Type)
-            {
-                case SelectableType.Asset:
-                    stringBuilder.Append("A:").Append(Guid);
-                    break;
-                case SelectableType.Instance:
-                    stringBuilder.Append("I:").Append(InstanceId);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                switch (data.ContextType)
+                {
+                    case SelectableContextType.Invalid:
+                        break;
+                    case SelectableContextType.Project:
+                        break;
+                    case SelectableContextType.Scene:
+                        SceneAsset =
+                            AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        break;
+                    case SelectableContextType.Prefab:
+                        PrefabAsset =
+                            AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
             }
         }
     }

@@ -1,0 +1,16 @@
+{
+    "name": "Nomad.EditorUtilities.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "Nomad.EditorUtilities.Editor"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
