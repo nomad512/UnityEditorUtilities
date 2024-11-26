@@ -35,6 +35,12 @@ namespace Nomad.EditorUtilities
             _tabs = tabs;
         }
 
+        internal void Step(int step)
+        {
+            _activeIndex += step;
+            _activeIndex = _activeIndex % _tabs.Length;
+        }
+
         internal void Draw()
         {
             GUI.enabled = true;
