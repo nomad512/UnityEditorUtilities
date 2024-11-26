@@ -14,7 +14,7 @@ namespace Nomad.EditorUtilities
         private const string HistoryPrefKey = "Nomad_EditorUtilities_ProjectNav_History";
 
         private static event Action _updatedHistory;
-        private static int _historyMaxSize = 10;
+        private static int _historyMaxSize = 32;
         private static bool _skipNextSelection;
         private static int _historyCurrentSize;
         private static List<SelectionItem> _historyItems;
@@ -77,12 +77,20 @@ namespace Nomad.EditorUtilities
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
             if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
 
-            if (_historyItems.Count == _historyMaxSize)
+            while (_historyItems.Count >= _historyMaxSize)
             {
-                _historyItems.RemoveAt(_historyMaxSize - 1); // Limit Size.
+                for (int i = _historyItems.Count - 1; i >= 0; i--)
+                {
+                    if (_historyItems[i].IsPinned) continue;
+                    _historyItems.RemoveAt(i); // Limit size, but don't remove Pinned items.
+                    break;
+                }
             }
 
-            _historyItems.Insert(0, item); // Add to beginning of list.
+            if (_historyItems.Count < _historyMaxSize)
+            {
+                _historyItems.Insert(0, item); // Add to beginning of list.
+            }
 
             _updatedHistory?.Invoke();
         }
