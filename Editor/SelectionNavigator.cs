@@ -23,10 +23,15 @@ namespace Nomad.EditorUtilities
         private static List<SelectionItem> _historyItems;
         private static List<SelectionItem> _pinnedItems;
 
+        private static bool _recordFolders = true;
+        private static bool _recordPrefabStageObjects;
+
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
         private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
         private Vector2 _historyScrollPosition;
         private TabBar _tabBar;
+
+        private static readonly GUILayoutOption _singleLineHeightOption = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
 
 
         [InitializeOnLoadMethod]
@@ -59,17 +64,21 @@ namespace Nomad.EditorUtilities
             }
 
             if (Selection.activeObject == null) return;
-            // if (Selection.activeObject is DefaultAsset) return; // Ignore folders.
+            if (!_recordFolders && Selection.activeObject is DefaultAsset) return; // Ignore folders.
 
-            var item = new SelectionItem(new SerializableSelectionData(Selection.activeObject));
+            var item = default(SelectionItem);
 
             for (var i = _historyItems.Count - 1; i >= 0; i--)
             {
-                if (_historyItems[i].Object == item.Object)
+                if (_historyItems[i].Object == Selection.activeObject)
                 {
+                    item = _historyItems[i];
                     _historyItems.RemoveAt(i); // Remove duplicate.
+                    break;
                 }
             }
+            item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
+            if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
 
             if (_historyItems.Count == _historyMaxSize)
             {
@@ -124,6 +133,8 @@ namespace Nomad.EditorUtilities
                 {
                     case KeyCode.UpArrow: selectNext(-1); break;
                     case KeyCode.DownArrow: selectNext(1); break;
+                    // case KeyCode.P: // TODO: toggle pin 
+                    // TODO: focus selection
                 }
             }
 
@@ -178,6 +189,7 @@ namespace Nomad.EditorUtilities
 
         private void DrawHistory()
         {
+            var cacheGuiColor = GUI.color;
             Sanitize();
             using (new EditorGUILayout.VerticalScope())
             {
@@ -200,50 +212,80 @@ namespace Nomad.EditorUtilities
                                         isFocused ? _activeHighlightColor : _inactiveHighlightColor);
                                 }
 
-                                // // Draw context
-                                // if (item.SceneAsset != null)
-                                // {
-                                //     var r = row.rect;
-                                //     r.width *= 0.50f;
-                                //     r.x = row.rect.x + row.rect.width - r.width;
-                                //     GUI.Label(r,
-                                //         new GUIContent(item.SceneAsset.name,
-                                //             EditorGUIUtility.ObjectContent(item.SceneAsset, item.SceneAsset.GetType()).image),
-                                //         EditorStyles.miniLabel);
-                                // }
-
+                                const float buttonWidth = 30;
+                                
                                 // Draw item as button.
                                 if (GUILayout.Button(
                                         new GUIContent(obj.name,
                                             EditorGUIUtility.ObjectContent(obj, item.GetType()).image),
                                         EditorStyles.label,
-                                        GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
+                                        // GUILayout.MaxWidth(300),
+                                        _singleLineHeightOption))
                                 {
                                     SetSelection(obj);
                                 }
+                                
+                                
+                                // Draw Favorite Button.
+                                if (item.IsPinned)
+                                {
+                                    GUI.color = Color.yellow;
+                                    if (GUILayout.Button(
+                                            EditorGUIUtility.IconContent("Favorite Icon"),
+                                            EditorStyles.label,
+                                            GUILayout.MaxWidth(buttonWidth),
+                                            _singleLineHeightOption ))
+                                    {
+                                        item.IsPinned = false;
+                                    }
+                                    GUI.color = cacheGuiColor;
+                                }
+                                else if (Selection.activeObject == item.Object)
+                                {
+                                    if (GUILayout.Button(
+                                            EditorGUIUtility.IconContent("Favorite Icon"),
+                                            EditorStyles.label,
+                                            GUILayout.MaxWidth(buttonWidth),
+                                            _singleLineHeightOption ))
+                                    {
+                                        item.IsPinned = true;
+                                    }
+                                }
 
-                                // Draw Context
-                                if (item.SceneAsset != null)
-                                {
-                                    if (GUILayout.Button( 
-                                            EditorGUIUtility.IconContent("d_SceneAsset Icon"),
-                                            GUILayout.MaxWidth(32),
-                                            GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
-                                    {
-                                        
-                                    }
-                                }
-                                if (item.PrefabAsset != null)
-                                {
-                                    Debug.Log(item.PrefabAsset.GetType());
-                                    if (GUILayout.Button( 
-                                            EditorGUIUtility.IconContent("d_Prefab Icon"),
-                                            GUILayout.MaxWidth(32),
-                                            GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight)))
-                                    {
-                                        
-                                    }
-                                }
+                                // // Draw Context
+                                // if (item.SceneAsset != null)
+                                // {
+                                //     width -= buttonWidth;
+                                //     if (GUILayout.Button( 
+                                //             EditorGUIUtility.IconContent("d_SceneAsset Icon"),
+                                //             GUILayout.MaxWidth(buttonWidth),
+                                //             _singleLineHeightOption))
+                                //     {
+                                //         
+                                //     }
+                                // }
+                                // if (item.PrefabAsset != null)
+                                // {
+                                //     width -= buttonWidth;
+                                //     // Debug.Log(item.PrefabAsset.GetType());
+                                //     if (GUILayout.Button( 
+                                //             EditorGUIUtility.IconContent("d_Prefab Icon"),
+                                //             GUILayout.MaxWidth(buttonWidth),
+                                //             _singleLineHeightOption))
+                                //     {
+                                //         
+                                //     }
+                                // }
+
+                                // // Draw "remove" button.
+                                // if (GUILayout.Button(
+                                //         EditorGUIUtility.IconContent("d_winbtn_win_close"),
+                                //         GUILayout.MaxWidth(buttonWidth),
+                                //         _singleLineHeightOption))
+                                // {
+                                //     
+                                // }
+                                
                             }
                         }
                     }
@@ -264,6 +306,8 @@ namespace Nomad.EditorUtilities
                     }
                 }
             }
+
+            GUI.color = cacheGuiColor;
         }
 
         private void DrawPinned()
@@ -301,8 +345,9 @@ namespace Nomad.EditorUtilities
             var jsonBuilder = new StringBuilder();
             foreach (var item in _historyItems)
             {
-                jsonBuilder.AppendLine(JsonUtility.ToJson(item));
+                jsonBuilder.AppendLine(JsonUtility.ToJson(item.Data));
             }
+            EditorPrefs.SetString(HistoryPrefKey, jsonBuilder.ToString());
         }
 
         private void LoadHistoryFromDisk()
@@ -313,16 +358,17 @@ namespace Nomad.EditorUtilities
 
             foreach (var line in lines)
             {
-                // Debug.Log(line);
                 var data = JsonUtility.FromJson<SerializableSelectionData>(line);
                 var item = new SelectionItem(data);
                 // if (item.Object == null) continue; // Item could not resolve an object.
                 switch (item.Data.Type)
                 {
                     case SelectableType.Invalid:
+                        Debug.Log("Invalid data");
                         continue;
                     case SelectableType.Asset:
-                        if (_historyItems.Any(x => item.Data.Guid == x.Data.Guid)) continue; // Skip duplicate asset.
+                        if (_historyItems.Any(x => item.Data.Guid == x.Data.Guid)) 
+                            continue; // Skip duplicate asset.
                         break;
                     case SelectableType.Instance:
                         if (_historyItems.Any(x => item.Data.InstanceId == x.Data.InstanceId))
@@ -420,6 +466,7 @@ namespace Nomad.EditorUtilities
             internal readonly Object Object;
             internal readonly SceneAsset SceneAsset;
             internal readonly Object PrefabAsset;
+            internal bool IsPinned;
 
             public SelectionItem(SerializableSelectionData data)
             {
