@@ -2,18 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using UnityEngine;
+using UnityEditor;
 using UnityEditor.SceneManagement;
+using Object = UnityEngine.Object;
 
 namespace Nomad.EditorUtilities
 {
-    using UnityEngine;
-    using UnityEditor;
-
     internal class SelectionNavigator : EditorWindow
     {
-        private const string HistoryPrefKey = "Nomad_EditorUtilities_ProjectNav_History";
+        private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
+        private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
 
-        private static event Action _updatedHistory;
+        private static event Action UpdatedHistory;
         private static int _historyMaxSize = 32;
         private static bool _skipNextSelection;
         private static int _historyCurrentSize;
@@ -28,6 +29,7 @@ namespace Nomad.EditorUtilities
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
         private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
         private Vector2 _historyScrollPosition;
+        private Vector2 _settingsScrollPosition;
         private TabBar _tabBar;
 
         private static readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
@@ -77,22 +79,14 @@ namespace Nomad.EditorUtilities
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
             if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
 
-            while (_historyItems.Count >= _historyMaxSize)
+            if (_historyItems.Count == _historyMaxSize)
             {
-                for (int i = _historyItems.Count - 1; i >= 0; i--)
-                {
-                    if (_historyItems[i].IsPinned) continue;
-                    _historyItems.RemoveAt(i); // Limit size, but don't remove Pinned items.
-                    break;
-                }
+                _historyItems.RemoveAt(_historyMaxSize - 1); // Limit Size.
             }
 
-            if (_historyItems.Count < _historyMaxSize)
-            {
-                _historyItems.Insert(0, item); // Add to beginning of list.
-            }
+            _historyItems.Insert(0, item); // Add to beginning of list.
 
-            _updatedHistory?.Invoke();
+            UpdatedHistory?.Invoke();
         }
 
         /// Called when the selection changes, for each instance of the window. 
@@ -104,18 +98,18 @@ namespace Nomad.EditorUtilities
         private void OnEnable()
         {
             _tabBar = new TabBar(
-                new GenericTab("History", DrawHistory),
-                new GenericTab("Pinned", DrawPinned)
+                new ActionTab("History", DrawHistory),
+                new ActionTab("Pinned", DrawPinned),
+                new ActionTab("Settings", DrawSettings)
             );
 
-            _updatedHistory += OnUpdatedHistory;
-
+            UpdatedHistory += OnUpdatedHistory;
             LoadHistoryFromDisk();
         }
 
         private void OnDisable()
         {
-            _updatedHistory -= OnUpdatedHistory;
+            UpdatedHistory -= OnUpdatedHistory;
             SaveHistoryToDisk();
         }
 
@@ -125,10 +119,7 @@ namespace Nomad.EditorUtilities
             _tabBar.Draw();
         }
 
-        private void OnUpdatedHistory()
-        {
-            Repaint();
-        }
+        private void OnUpdatedHistory() => Repaint();
 
         private void UpdateKeys()
         {
@@ -233,13 +224,6 @@ namespace Nomad.EditorUtilities
                     {
                         ClearLoadedHistory();
                     }
-
-                    if (GUILayout.Button("Reload"))
-                    {
-                        SaveHistoryToDisk();
-                        ClearLoadedHistory();
-                        LoadHistoryFromDisk();
-                    }
                 }
             }
 
@@ -270,6 +254,31 @@ namespace Nomad.EditorUtilities
             }
         }
 
+        private void DrawSettings()
+        {
+            using (new EditorGUILayout.VerticalScope())
+            {
+                using (var scrollView = new EditorGUILayout.ScrollViewScope(_settingsScrollPosition))
+                {
+                    _settingsScrollPosition = scrollView.scrollPosition;
+
+                    var recordFolders = EditorGUILayout.Toggle("Include Folders", _recordFolders);
+                    if (recordFolders != _recordFolders)
+                    {
+                        _recordFolders = recordFolders;
+                        EditorPrefs.GetBool(PrefKey_RecordFolders, recordFolders);
+                    }
+
+                    if (GUILayout.Button("Reload"))
+                    {
+                        SaveHistoryToDisk();
+                        ClearLoadedHistory();
+                        LoadHistoryFromDisk();
+                    }
+                }
+            }
+        }
+
         private void DrawItem(SelectionItem item, bool isWindowFocused, Color cacheGuiColor)
         {
             var obj = item.Object;
@@ -287,18 +296,7 @@ namespace Nomad.EditorUtilities
                 var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
                 if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
                 {
-                    var clickTime = EditorApplication.timeSinceStartup;
-                    if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
-                    {
-                        AssetDatabase.OpenAsset(obj);
-                        if (item.Data.Type is SelectableType.Asset)
-                        {
-                            
-                        }
-                    }
-
                     SetSelection(obj);
-                    item.LastClickTime = clickTime;
                 }
 
                 const float buttonWidth = 20;
@@ -351,6 +349,8 @@ namespace Nomad.EditorUtilities
             EditorGUIUtility.PingObject(obj);
         }
 
+        #region Save/Load
+
         private void ClearLoadedHistory()
         {
             _historyItems.Clear();
@@ -365,12 +365,12 @@ namespace Nomad.EditorUtilities
                 jsonBuilder.AppendLine(JsonUtility.ToJson(item.Data));
             }
 
-            EditorPrefs.SetString(HistoryPrefKey, jsonBuilder.ToString());
+            EditorPrefs.SetString(PrefKey_History, jsonBuilder.ToString());
         }
 
         private void LoadHistoryFromDisk()
         {
-            var historyRaw = EditorPrefs.GetString(HistoryPrefKey, string.Empty);
+            var historyRaw = EditorPrefs.GetString(PrefKey_History, string.Empty);
             var lines = historyRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             _historyItems ??= new List<SelectionItem>(lines.Length);
 
@@ -378,8 +378,7 @@ namespace Nomad.EditorUtilities
             {
                 var isPinned = line.StartsWith("*");
                 var data = JsonUtility.FromJson<SerializableSelectionData>(isPinned ? line.Substring(1) : line);
-                var item = new SelectionItem(data);
-                item.IsPinned = isPinned;
+                var item = new SelectionItem(data) { IsPinned = isPinned };
                 // if (item.Object == null) continue; // Item could not resolve an object.
                 switch (item.Data.Type)
                 {
@@ -400,6 +399,10 @@ namespace Nomad.EditorUtilities
                 _historyItems.Add(item);
             }
         }
+
+        #endregion
+
+        #region Data Structures
 
         public enum SelectableType
         {
@@ -437,7 +440,7 @@ namespace Nomad.EditorUtilities
                     return;
                 }
 
-                if (EditorUtility.IsPersistent(Selection.activeObject))
+                if (EditorUtility.IsPersistent(obj))
                 {
                     Type = SelectableType.Asset;
                     Guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(obj));
@@ -451,7 +454,7 @@ namespace Nomad.EditorUtilities
                     Guid = string.Empty;
                     InstanceId = obj.GetInstanceID();
 
-                    var go = obj as GameObject;
+                    var go = obj as GameObject; // Instance types are always GameObjects. 
                     var prefabStage = PrefabStageUtility.GetPrefabStage(go);
                     if (prefabStage != null)
                     {
@@ -474,9 +477,6 @@ namespace Nomad.EditorUtilities
             internal readonly SceneAsset SceneAsset;
             internal readonly Object PrefabAsset;
             internal bool IsPinned;
-            internal double LastClickTime;
-
-            internal const float DoubleClickMaxDuration = 0.5f;
 
             public SelectionItem(SerializableSelectionData data)
             {
@@ -515,5 +515,7 @@ namespace Nomad.EditorUtilities
                 }
             }
         }
+
+        #endregion
     }
 }
