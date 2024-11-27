@@ -287,7 +287,18 @@ namespace Nomad.EditorUtilities
                 var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
                 if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
                 {
+                    var clickTime = EditorApplication.timeSinceStartup;
+                    if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
+                    {
+                        AssetDatabase.OpenAsset(obj);
+                        if (item.Data.Type is SelectableType.Asset)
+                        {
+                            
+                        }
+                    }
+
                     SetSelection(obj);
+                    item.LastClickTime = clickTime;
                 }
 
                 const float buttonWidth = 20;
@@ -463,6 +474,9 @@ namespace Nomad.EditorUtilities
             internal readonly SceneAsset SceneAsset;
             internal readonly Object PrefabAsset;
             internal bool IsPinned;
+            internal double LastClickTime;
+
+            internal const float DoubleClickMaxDuration = 0.5f;
 
             public SelectionItem(SerializableSelectionData data)
             {
