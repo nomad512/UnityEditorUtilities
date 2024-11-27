@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.AnimatedValues;
 using UnityEditor.SceneManagement;
 using Object = UnityEngine.Object;
 
@@ -11,6 +12,7 @@ namespace Nomad.EditorUtilities
 {
     internal class SelectionNavigator : EditorWindow
     {
+        private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
         private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
 
@@ -18,6 +20,7 @@ namespace Nomad.EditorUtilities
         private static int _historyMaxSize = 32;
         private static bool _skipNextSelection;
         private static int _historyCurrentSize;
+        private static SelectionItem _selectedItem;
         private static List<SelectionItem> _historyItems;
 
         // private static SceneAsset _currentSceneContext;
@@ -32,6 +35,8 @@ namespace Nomad.EditorUtilities
         private Vector2 _settingsScrollPosition;
         private TabBar _tabBar;
 
+        private AnimBool _anim_ShowPinnedStagingArea;
+
         private static readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
 
 
@@ -45,12 +50,7 @@ namespace Nomad.EditorUtilities
 
         [MenuItem("Nomad/Window/Project Navigator", false, 10)]
         [MenuItem("Window/Nomad/Project Navigator", false, 10)]
-        internal static SelectionNavigator ShowWindow()
-        {
-            var window = GetWindow<SelectionNavigator>();
-            window.titleContent = new GUIContent("Selection Navigator", Icons.Hierarchy16);
-            return window;
-        }
+        internal static void ShowWindow() => GetWindow<SelectionNavigator>();
 
         /// Called when the active selection changed, whether an instance of the window exists or not.
         private static void OnSelectionChangedGlobal()
@@ -77,6 +77,7 @@ namespace Nomad.EditorUtilities
             }
 
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
+            _selectedItem = item;
             if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
 
             if (_historyItems.Count == _historyMaxSize)
@@ -84,24 +85,31 @@ namespace Nomad.EditorUtilities
                 _historyItems.RemoveAt(_historyMaxSize - 1); // Limit Size.
             }
 
+            // TODO: maybe don't reorder list if it was already selected?
             _historyItems.Insert(0, item); // Add to beginning of list.
 
-            UpdatedHistory?.Invoke();
+            // UpdatedHistory?.Invoke();
         }
 
         /// Called when the selection changes, for each instance of the window. 
-        private void OnSelectionChange()
-        {
-            Repaint();
-        }
+        private void OnSelectionChange() => Repaint();
+        
+        // Called when an edit is made to the history.
+        private void OnUpdatedHistory() => Repaint();
 
         private void OnEnable()
         {
+            titleContent = new GUIContent("Selection Navigator", Icons.Hierarchy16);
+
             _tabBar = new TabBar(
                 new ActionTab("History", DrawHistory),
                 new ActionTab("Pinned", DrawPinned),
                 new ActionTab("Settings", DrawSettings)
             );
+            _tabBar.ActiveIndex = EditorPrefs.GetInt(PrefKey_Tab, 0);
+            
+            _anim_ShowPinnedStagingArea = new AnimBool { speed = 5 };
+            _anim_ShowPinnedStagingArea.valueChanged.AddListener(Repaint);
 
             UpdatedHistory += OnUpdatedHistory;
             LoadHistoryFromDisk();
@@ -109,6 +117,8 @@ namespace Nomad.EditorUtilities
 
         private void OnDisable()
         {
+            EditorPrefs.SetInt(PrefKey_Tab, _tabBar.ActiveIndex);
+            
             UpdatedHistory -= OnUpdatedHistory;
             SaveHistoryToDisk();
         }
@@ -119,9 +129,8 @@ namespace Nomad.EditorUtilities
             _tabBar.Draw();
         }
 
-        private void OnUpdatedHistory() => Repaint();
 
-        private void UpdateKeys()
+        private void UpdateKeys() // TODO: implement arrow navigation for Pinned list 
         {
             if (Event.current.type == EventType.KeyDown)
             {
@@ -176,7 +185,7 @@ namespace Nomad.EditorUtilities
                 SetSelection(_historyItems[index].Object);
             }
         }
-
+        
         private void Sanitize()
         {
             for (int i = _historyItems.Count - 1; i >= 0; i--)
@@ -209,20 +218,9 @@ namespace Nomad.EditorUtilities
                 using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
                 {
                     _historyScrollPosition = scrollView.scrollPosition;
-                    using (new EditorGUI.DisabledScope(false))
+                    foreach (var item in _historyItems)
                     {
-                        foreach (var item in _historyItems)
-                        {
-                            DrawItem(item, isWindowFocused, cacheGuiColor);
-                        }
-                    }
-                }
-
-                using (new GUILayout.HorizontalScope())
-                {
-                    if (GUILayout.Button("Clear"))
-                    {
-                        ClearLoadedHistory();
+                        DrawItem(item, isWindowFocused, cacheGuiColor);
                     }
                 }
             }
@@ -240,16 +238,16 @@ namespace Nomad.EditorUtilities
                 using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
                 {
                     _historyScrollPosition = scrollView.scrollPosition;
-                    using (new EditorGUI.DisabledScope(false))
+
+                    // Draw the selected item separately if it is not in the pinned list.
+                    _anim_ShowPinnedStagingArea.target = (_selectedItem is not null && !_selectedItem.IsPinned);
+                    using (new EditorGUILayout.FadeGroupScope(_anim_ShowPinnedStagingArea.faded))
                     {
-                        foreach (var item in _historyItems)
-                        {
-                            if (item.IsPinned)
-                            {
-                                DrawItem(item, isWindowFocused, cacheGuiColor);
-                            }
-                        }
+                        if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor);
                     }
+                    
+                    // Draw the pinned items.
+                    foreach (var item in _historyItems) if (item.IsPinned) DrawItem(item, isWindowFocused, cacheGuiColor);
                 }
             }
         }
@@ -262,18 +260,27 @@ namespace Nomad.EditorUtilities
                 {
                     _settingsScrollPosition = scrollView.scrollPosition;
 
-                    var recordFolders = EditorGUILayout.Toggle("Include Folders", _recordFolders);
+                    var recordFolders = EditorGUILayout.Toggle(new GUIContent("Include Folders", "If true, folders may be included in history."), _recordFolders);
                     if (recordFolders != _recordFolders)
                     {
                         _recordFolders = recordFolders;
                         EditorPrefs.GetBool(PrefKey_RecordFolders, recordFolders);
                     }
 
-                    if (GUILayout.Button("Reload"))
+                    
+                    using (new GUILayout.HorizontalScope())
                     {
-                        SaveHistoryToDisk();
-                        ClearLoadedHistory();
-                        LoadHistoryFromDisk();
+                        GUILayout.FlexibleSpace();
+                        if (GUILayout.Button(new GUIContent("Test Reload", "Saves current history to disk and reloads it.")))
+                        {
+                            SaveHistoryToDisk();
+                            ClearLoadedHistory();
+                            LoadHistoryFromDisk();
+                        }
+                        if (GUILayout.Button("Clear"))
+                        {
+                            ClearLoadedHistory();
+                        }
                     }
                 }
             }
@@ -281,6 +288,7 @@ namespace Nomad.EditorUtilities
 
         private void DrawItem(SelectionItem item, bool isWindowFocused, Color cacheGuiColor)
         {
+            if (item is null) return;
             var obj = item.Object;
             if (obj == null) return;
             using (var row = new EditorGUILayout.HorizontalScope())
