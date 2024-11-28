@@ -23,7 +23,7 @@ namespace Nomad.EditorUtilities
             ActiveIndex %= _tabs.Length;
         }
 
-        internal void Draw()
+        internal int Draw()
         {
             GUI.enabled = true;
 
@@ -32,6 +32,8 @@ namespace Nomad.EditorUtilities
             GUILayout.Space(10);
 
             _tabs[ActiveIndex].Draw();
+
+            return ActiveIndex;
         }
     }
     

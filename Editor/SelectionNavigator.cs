@@ -12,16 +12,18 @@ namespace Nomad.EditorUtilities
 {
     internal class SelectionNavigator : EditorWindow
     {
+        private enum Tab { History, Pinned, Settings}
+        
         private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
         private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
+        private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
 
         private static event Action UpdatedHistory;
         private static int _historyMaxSize = 32;
-        private static bool _skipNextSelection;
-        private static int _historyCurrentSize;
         private static SelectionItem _selectedItem;
         private static List<SelectionItem> _historyItems;
+        private static bool _skipNextSelection;
 
         // private static SceneAsset _currentSceneContext;
         // private static GameObject _currentPrefabContext;
@@ -34,6 +36,7 @@ namespace Nomad.EditorUtilities
         private Vector2 _historyScrollPosition;
         private Vector2 _settingsScrollPosition;
         private TabBar _tabBar;
+        private Tab _tab;
 
         private AnimBool _anim_ShowPinnedStagingArea;
 
@@ -141,11 +144,11 @@ namespace Nomad.EditorUtilities
         private void OnGUI()
         {
             UpdateKeys();
-            _tabBar.Draw();
+            _tab = (Tab)_tabBar.Draw();
         }
 
 
-        private void UpdateKeys() // TODO: implement arrow navigation for Pinned list 
+        private void UpdateKeys() 
         {
             if (Event.current.type == EventType.KeyDown)
             {
@@ -169,6 +172,12 @@ namespace Nomad.EditorUtilities
                     case KeyCode.Tab:
                         _tabBar.Step(Event.current.shift ? -1 : 1);
                         break;
+                    // case KeyCode.RightArrow:
+                    //     _tabBar.Step(1);
+                    //     break;
+                    // case KeyCode.LeftAlt:
+                    //     _tabBar.Step(-1);
+                    //     break;
                     // TODO: focus selection
                 }
             }
@@ -177,27 +186,27 @@ namespace Nomad.EditorUtilities
 
             void selectNext(int steps)
             {
-                var index = -1;
-                for (int i = 0; i < _historyItems.Count; i++)
+                var items = _tab switch
                 {
-                    if (_historyItems[i].Object == Selection.activeObject)
-                    {
-                        index = i;
-                        break;
-                    }
-                }
+                    Tab.History => _historyItems,
+                    Tab.Pinned => _historyItems.Where(x => x.IsPinned).ToList(),
+                    _ => null
+                };
 
-                if (index == -1)
-                {
-                    index = 0;
-                }
-                else
-                {
-                    index += steps;
-                    index = Mathf.Clamp(index, 0, _historyItems.Count - 1);
-                }
+                if (items is null || !items.Any()) return;
 
-                SetSelection(_historyItems[index].Object);
+                var index = 0;
+                for (var i = 0; i < items.Count; i++)
+                {
+                    if (items[i].Object != Selection.activeObject) continue;
+                    index = i + steps;
+                    index = Mathf.Clamp(index, 0, items.Count - 1);
+                    break;
+                }
+                
+                var obj = _historyItems[index].Object;
+                if (obj != null)
+                    SetSelection(obj);
             }
         }
         
@@ -278,9 +287,18 @@ namespace Nomad.EditorUtilities
                     if (recordFolders != _recordFolders)
                     {
                         _recordFolders = recordFolders;
-                        EditorPrefs.GetBool(PrefKey_RecordFolders, recordFolders);
+                        EditorPrefs.SetBool(PrefKey_RecordFolders, recordFolders);
                     }
 
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        var historySize = EditorGUILayout.IntField(new GUIContent("History Size", "The max number of items recorded in history."), _historyMaxSize);
+                        if (historySize != _historyMaxSize)
+                        {
+                            _historyMaxSize = historySize;
+                            EditorPrefs.SetInt(PrefKey_HistorySize, historySize);
+                        }
+                    }
                     
                     using (new GUILayout.HorizontalScope())
                     {
