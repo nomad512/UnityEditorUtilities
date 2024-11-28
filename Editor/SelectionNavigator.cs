@@ -61,17 +61,25 @@ namespace Nomad.EditorUtilities
                 return;
             }
 
-            if (Selection.activeObject == null) return;
+            if (Selection.activeObject == null)
+            {
+                _selectedItem = null;
+                UpdatedHistory?.Invoke();
+                return;
+            }
+            
             if (!_recordFolders && Selection.activeObject is DefaultAsset) return; // Ignore folders.
 
             var item = default(SelectionItem);
+            var alreadyRecorded = false;
 
             for (var i = _historyItems.Count - 1; i >= 0; i--)
             {
                 if (_historyItems[i].Object == Selection.activeObject)
                 {
                     item = _historyItems[i];
-                    _historyItems.RemoveAt(i);
+                    alreadyRecorded = true;
+                    // _historyItems.RemoveAt(i); // Do this to reorder an already recorded item to the top of the list.
                     break;
                 }
             }
@@ -80,19 +88,26 @@ namespace Nomad.EditorUtilities
             _selectedItem = item;
             if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
 
-            if (_historyItems.Count == _historyMaxSize)
+            while (_historyItems.Count >= _historyMaxSize)
             {
-                _historyItems.RemoveAt(_historyMaxSize - 1); // Limit Size.
+                for (int i = _historyItems.Count - 1; i >= 0; i--)
+                {
+                    if (_historyItems[i].IsPinned) continue;
+                    _historyItems.RemoveAt(i); // Limit size, but don't remove Pinned items.
+                    break;
+                }
             }
 
-            // TODO: maybe don't reorder list if it was already selected?
-            _historyItems.Insert(0, item); // Add to beginning of list.
+            if (!alreadyRecorded && _historyItems.Count < _historyMaxSize)
+            {
+                _historyItems.Insert(0, item); // Add to beginning of list.
+            }
 
-            // UpdatedHistory?.Invoke();
+            UpdatedHistory?.Invoke();
         }
 
         /// Called when the selection changes, for each instance of the window. 
-        private void OnSelectionChange() => Repaint();
+        // private void OnSelectionChange() => Repaint();
         
         // Called when an edit is made to the history.
         private void OnUpdatedHistory() => Repaint();
@@ -224,8 +239,6 @@ namespace Nomad.EditorUtilities
                     }
                 }
             }
-
-            GUI.color = cacheGuiColor;
         }
 
         private void DrawPinned()
@@ -241,6 +254,7 @@ namespace Nomad.EditorUtilities
 
                     // Draw the selected item separately if it is not in the pinned list.
                     _anim_ShowPinnedStagingArea.target = (_selectedItem is not null && !_selectedItem.IsPinned);
+                    if (!_anim_ShowPinnedStagingArea.target) _anim_ShowPinnedStagingArea.value = false; // Close instantly because the close animation is glitchy for some reason.
                     using (new EditorGUILayout.FadeGroupScope(_anim_ShowPinnedStagingArea.faded))
                     {
                         if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor);
@@ -304,7 +318,18 @@ namespace Nomad.EditorUtilities
                 var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
                 if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
                 {
+                    var clickTime = EditorApplication.timeSinceStartup;
+                    if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
+                    {
+                        AssetDatabase.OpenAsset(obj);
+                        if (item.Data.Type is SelectableType.Asset)
+                        {
+                            EditorUtility.FocusProjectWindow();
+                        }
+                    }
+
                     SetSelection(obj);
+                    item.LastClickTime = clickTime;
                 }
 
                 const float buttonWidth = 20;
@@ -355,6 +380,7 @@ namespace Nomad.EditorUtilities
             _skipNextSelection = true;
             Selection.activeObject = obj;
             EditorGUIUtility.PingObject(obj);
+            Repaint();
         }
 
         #region Save/Load
@@ -485,6 +511,9 @@ namespace Nomad.EditorUtilities
             internal readonly SceneAsset SceneAsset;
             internal readonly Object PrefabAsset;
             internal bool IsPinned;
+            internal double LastClickTime;
+
+            internal const float DoubleClickMaxDuration = 0.5f;
 
             public SelectionItem(SerializableSelectionData data)
             {
