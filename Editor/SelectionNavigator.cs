@@ -12,8 +12,14 @@ namespace Nomad.EditorUtilities
 {
     internal class SelectionNavigator : EditorWindow
     {
-        private enum Tab { History, Pinned, Settings}
-        
+        private enum Tab
+        {
+            None = -1,
+            History,
+            Pinned,
+            Settings
+        }
+
         private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
         private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
@@ -34,11 +40,14 @@ namespace Nomad.EditorUtilities
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
         private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
         private Vector2 _historyScrollPosition;
+        private Vector2 _pinnedScrollPosition;
         private Vector2 _settingsScrollPosition;
         private TabBar _tabBar;
-        private Tab _tab;
+        private Tab _currentTab;
+        private Tab _queuedTab = Tab.None;
 
         private AnimBool _anim_ShowPinnedStagingArea;
+        private AnimBool _anim_ShowContextArea;
 
         private static readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
 
@@ -65,6 +74,8 @@ namespace Nomad.EditorUtilities
             {
                 _currentPrefabContext = AssetDatabase.LoadAssetAtPath<GameObject>(prefabStage.assetPath);
             }
+
+            UpdatedHistory?.Invoke();
         }
 
         [MenuItem("Nomad/Window/Project Navigator", false, 10)]
@@ -86,7 +97,7 @@ namespace Nomad.EditorUtilities
                 UpdatedHistory?.Invoke();
                 return;
             }
-            
+
             if (!_recordFolders && Selection.activeObject is DefaultAsset) return; // Ignore folders.
 
             var item = default(SelectionItem);
@@ -128,7 +139,7 @@ namespace Nomad.EditorUtilities
         /// Called when the selection changes, for each instance of the window. 
         // private void OnSelectionChange() => Repaint();
         // TODO: adjust scroll position when changing selection
-        
+
         // Called when an edit is made to the history.
         private void OnUpdatedHistory() => Repaint();
 
@@ -142,18 +153,19 @@ namespace Nomad.EditorUtilities
                 new ActionTab("Settings", DrawSettings)
             );
             _tabBar.ActiveIndex = EditorPrefs.GetInt(PrefKey_Tab, 0);
-            
+
             _anim_ShowPinnedStagingArea = new AnimBool { speed = 5 };
             _anim_ShowPinnedStagingArea.valueChanged.AddListener(Repaint);
 
             UpdatedHistory += OnUpdatedHistory;
             LoadHistoryFromDisk();
+            GetCurrentPrefabContext();
         }
 
         private void OnDisable()
         {
             EditorPrefs.SetInt(PrefKey_Tab, _tabBar.ActiveIndex);
-            
+
             UpdatedHistory -= OnUpdatedHistory;
             SaveHistoryToDisk();
         }
@@ -161,11 +173,17 @@ namespace Nomad.EditorUtilities
         private void OnGUI()
         {
             UpdateKeys();
-            _tab = (Tab)_tabBar.Draw();
+            if (_queuedTab is not Tab.None)
+            {
+                _tabBar.ActiveIndex = (int)_queuedTab;
+                _queuedTab = Tab.None;
+            }
+
+            _currentTab = (Tab)_tabBar.Draw();
         }
 
 
-        private void UpdateKeys() 
+        private void UpdateKeys()
         {
             if (Event.current.type == EventType.KeyDown)
             {
@@ -189,6 +207,9 @@ namespace Nomad.EditorUtilities
                     case KeyCode.Tab:
                         _tabBar.Step(Event.current.shift ? -1 : 1);
                         break;
+                    case KeyCode.Alpha1: _queuedTab = Tab.History; break;
+                    case KeyCode.Alpha2: _queuedTab = Tab.Pinned; break;
+                    case KeyCode.Alpha3: _queuedTab = Tab.Settings; break;
                     // case KeyCode.RightArrow:
                     //     _tabBar.Step(1);
                     //     break;
@@ -203,7 +224,7 @@ namespace Nomad.EditorUtilities
 
             void selectNext(int steps)
             {
-                var items = _tab switch
+                var items = _currentTab switch
                 {
                     Tab.History => _historyItems,
                     Tab.Pinned => _historyItems.Where(x => x.IsPinned).ToList(),
@@ -220,13 +241,13 @@ namespace Nomad.EditorUtilities
                     index = Mathf.Clamp(index, 0, items.Count - 1);
                     break;
                 }
-                
+
                 var obj = items[index].Object;
                 if (obj != null)
                     SetSelection(obj);
             }
         }
-        
+
         private void Sanitize()
         {
             for (var i = _historyItems.Count - 1; i >= 0; i--)
@@ -254,17 +275,14 @@ namespace Nomad.EditorUtilities
             var isWindowFocused = focusedWindow == this;
 
             Sanitize();
-            
-            using (new EditorGUILayout.VerticalScope())
+
+            using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
             {
-                using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
+                _historyScrollPosition = scrollView.scrollPosition;
+                DrawContext();
+                foreach (var item in _historyItems)
                 {
-                    _historyScrollPosition = scrollView.scrollPosition;
-                    DrawContext();
-                    foreach (var item in _historyItems)
-                    {
-                        DrawItem(item, isWindowFocused, cacheGuiColor);
-                    }
+                    DrawItem(item, isWindowFocused, cacheGuiColor);
                 }
             }
         }
@@ -274,64 +292,61 @@ namespace Nomad.EditorUtilities
             var cacheGuiColor = GUI.color;
             var isWindowFocused = focusedWindow == this;
 
-            using (new EditorGUILayout.VerticalScope())
+            using (var scrollView = new EditorGUILayout.ScrollViewScope(_pinnedScrollPosition))
             {
-                using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
-                {
-                    _historyScrollPosition = scrollView.scrollPosition;
+                _pinnedScrollPosition = scrollView.scrollPosition;
 
-                    // Draw the selected item separately if it is not in the pinned list.
-                    _anim_ShowPinnedStagingArea.target = (_selectedItem is not null && !_selectedItem.IsPinned);
-                    if (!_anim_ShowPinnedStagingArea.target) _anim_ShowPinnedStagingArea.value = false; // Close instantly because the close animation is glitchy for some reason.
-                    using (new EditorGUILayout.FadeGroupScope(_anim_ShowPinnedStagingArea.faded))
-                    {
-                        if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor, EditorStyles.helpBox);
-                    }
-                    
-                    // Draw the pinned items.
-                    foreach (var item in _historyItems) if (item.IsPinned) DrawItem(item, isWindowFocused, cacheGuiColor);
+                // Draw the selected item separately if it is not in the pinned list.
+                _anim_ShowPinnedStagingArea.target = (_selectedItem is not null && !_selectedItem.IsPinned);
+                if (!_anim_ShowPinnedStagingArea.target) _anim_ShowPinnedStagingArea.value = false; // Close instantly because the close animation is glitchy for some reason.
+                using (new EditorGUILayout.FadeGroupScope(_anim_ShowPinnedStagingArea.faded))
+                {
+                    if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor, EditorStyles.helpBox);
                 }
+
+                // Draw the pinned items.
+                foreach (var item in _historyItems)
+                    if (item.IsPinned)
+                        DrawItem(item, isWindowFocused, cacheGuiColor);
             }
         }
 
         private void DrawSettings()
         {
-            using (new EditorGUILayout.VerticalScope())
+            using (var scrollView = new EditorGUILayout.ScrollViewScope(_settingsScrollPosition))
             {
-                using (var scrollView = new EditorGUILayout.ScrollViewScope(_settingsScrollPosition))
+                _settingsScrollPosition = scrollView.scrollPosition;
+
+                var recordFolders = EditorGUILayout.Toggle(new GUIContent("Include Folders", "If true, folders may be included in history."), _recordFolders);
+                if (recordFolders != _recordFolders)
                 {
-                    _settingsScrollPosition = scrollView.scrollPosition;
+                    _recordFolders = recordFolders;
+                    EditorPrefs.SetBool(PrefKey_RecordFolders, recordFolders);
+                }
 
-                    var recordFolders = EditorGUILayout.Toggle(new GUIContent("Include Folders", "If true, folders may be included in history."), _recordFolders);
-                    if (recordFolders != _recordFolders)
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    var historySize = EditorGUILayout.IntField(new GUIContent("History Size", "The max number of items recorded in history."), _historyMaxSize);
+                    if (historySize != _historyMaxSize)
                     {
-                        _recordFolders = recordFolders;
-                        EditorPrefs.SetBool(PrefKey_RecordFolders, recordFolders);
+                        _historyMaxSize = historySize;
+                        EditorPrefs.SetInt(PrefKey_HistorySize, historySize);
+                    }
+                }
+
+                using (new GUILayout.HorizontalScope())
+                {
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button(new GUIContent("Test Reload", "Saves current history to disk and reloads it.")))
+                    {
+                        SaveHistoryToDisk();
+                        ClearLoadedHistory();
+                        LoadHistoryFromDisk();
                     }
 
-                    using (new EditorGUI.DisabledScope(true))
+                    if (GUILayout.Button("Clear"))
                     {
-                        var historySize = EditorGUILayout.IntField(new GUIContent("History Size", "The max number of items recorded in history."), _historyMaxSize);
-                        if (historySize != _historyMaxSize)
-                        {
-                            _historyMaxSize = historySize;
-                            EditorPrefs.SetInt(PrefKey_HistorySize, historySize);
-                        }
-                    }
-                    
-                    using (new GUILayout.HorizontalScope())
-                    {
-                        GUILayout.FlexibleSpace();
-                        if (GUILayout.Button(new GUIContent("Test Reload", "Saves current history to disk and reloads it.")))
-                        {
-                            SaveHistoryToDisk();
-                            ClearLoadedHistory();
-                            LoadHistoryFromDisk();
-                        }
-                        if (GUILayout.Button("Clear"))
-                        {
-                            ClearLoadedHistory();
-                        }
+                        ClearLoadedHistory();
                     }
                 }
             }
@@ -339,7 +354,25 @@ namespace Nomad.EditorUtilities
 
         private void DrawContext()
         {
+            if (_currentPrefabContext is null) return;
             
+            _anim_ShowContextArea.target = (_currentPrefabContext is not null);
+            if (!_anim_ShowContextArea.target) _anim_ShowContextArea.value = false; // Close instantly because the close animation is glitchy for some reason.
+
+            // if (!_anim_ShowContextArea.value) return;
+            
+            using (new GUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                // using (new EditorGUILayout.FadeGroupScope(_anim_ShowContextArea.faded))
+                // {
+                        GUILayout.Button(
+                            new GUIContent(_currentPrefabContext.name, EditorGUIUtility.ObjectContent(_currentPrefabContext, _currentPrefabContext.GetType()).image),
+                            EditorStyles.label,
+                            _guiMaxHeightSingleLine
+                        );
+                    //DrawItem(_selectedItem, false, GUI.color, EditorStyles.helpBox);
+                // }
+            }
         }
 
         private void DrawItem(SelectionItem item, bool isWindowFocused, Color cacheGuiColor, GUIStyle style = null)
@@ -348,7 +381,7 @@ namespace Nomad.EditorUtilities
             var obj = item.Object;
             if (obj == null) return;
             using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
-            
+
             // Highlight active object.
             if (obj == Selection.activeObject)
             {
