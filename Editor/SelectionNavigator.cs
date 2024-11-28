@@ -25,8 +25,8 @@ namespace Nomad.EditorUtilities
         private static List<SelectionItem> _historyItems;
         private static bool _skipNextSelection;
 
-        // private static SceneAsset _currentSceneContext;
-        // private static GameObject _currentPrefabContext;
+        private static SceneAsset _currentSceneContext;
+        private static GameObject _currentPrefabContext;
 
         private static bool _recordFolders = true;
         private static bool _recordPrefabStageObjects;
@@ -49,6 +49,22 @@ namespace Nomad.EditorUtilities
             Selection.selectionChanged += OnSelectionChangedGlobal;
             _historyItems = new List<SelectionItem>();
             // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
+
+            PrefabStage.prefabStageOpened += (_) => GetCurrentPrefabContext();
+            PrefabStage.prefabStageClosing += (_) => GetCurrentPrefabContext();
+        }
+
+        private static void GetCurrentPrefabContext()
+        {
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage == null)
+            {
+                _currentPrefabContext = null;
+            }
+            else
+            {
+                _currentPrefabContext = AssetDatabase.LoadAssetAtPath<GameObject>(prefabStage.assetPath);
+            }
         }
 
         [MenuItem("Nomad/Window/Project Navigator", false, 10)]
@@ -89,7 +105,7 @@ namespace Nomad.EditorUtilities
 
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
             _selectedItem = item;
-            if (!_recordPrefabStageObjects && item.PrefabAsset) return; // Ignore prefab members. // TODO: implement temporary context
+            if (!_recordPrefabStageObjects && item.PrefabContext) return; // Ignore prefab members. // TODO: implement temporary context
 
             while (_historyItems.Count >= _historyMaxSize)
             {
@@ -111,6 +127,7 @@ namespace Nomad.EditorUtilities
 
         /// Called when the selection changes, for each instance of the window. 
         // private void OnSelectionChange() => Repaint();
+        // TODO: adjust scroll position when changing selection
         
         // Called when an edit is made to the history.
         private void OnUpdatedHistory() => Repaint();
@@ -204,7 +221,7 @@ namespace Nomad.EditorUtilities
                     break;
                 }
                 
-                var obj = _historyItems[index].Object;
+                var obj = items[index].Object;
                 if (obj != null)
                     SetSelection(obj);
             }
@@ -212,7 +229,7 @@ namespace Nomad.EditorUtilities
         
         private void Sanitize()
         {
-            for (int i = _historyItems.Count - 1; i >= 0; i--)
+            for (var i = _historyItems.Count - 1; i >= 0; i--)
             {
                 var item = _historyItems[i];
                 // TODO: keep object instances that may be in a temporarily invalid context (i.e. from an inactive scene)
@@ -237,11 +254,13 @@ namespace Nomad.EditorUtilities
             var isWindowFocused = focusedWindow == this;
 
             Sanitize();
+            
             using (new EditorGUILayout.VerticalScope())
             {
                 using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
                 {
                     _historyScrollPosition = scrollView.scrollPosition;
+                    DrawContext();
                     foreach (var item in _historyItems)
                     {
                         DrawItem(item, isWindowFocused, cacheGuiColor);
@@ -266,7 +285,7 @@ namespace Nomad.EditorUtilities
                     if (!_anim_ShowPinnedStagingArea.target) _anim_ShowPinnedStagingArea.value = false; // Close instantly because the close animation is glitchy for some reason.
                     using (new EditorGUILayout.FadeGroupScope(_anim_ShowPinnedStagingArea.faded))
                     {
-                        if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor);
+                        if (_anim_ShowPinnedStagingArea.value) DrawItem(_selectedItem, isWindowFocused, cacheGuiColor, EditorStyles.helpBox);
                     }
                     
                     // Draw the pinned items.
@@ -318,79 +337,83 @@ namespace Nomad.EditorUtilities
             }
         }
 
-        private void DrawItem(SelectionItem item, bool isWindowFocused, Color cacheGuiColor)
+        private void DrawContext()
+        {
+            
+        }
+
+        private void DrawItem(SelectionItem item, bool isWindowFocused, Color cacheGuiColor, GUIStyle style = null)
         {
             if (item is null) return;
             var obj = item.Object;
             if (obj == null) return;
-            using (var row = new EditorGUILayout.HorizontalScope())
+            using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
+            
+            // Highlight active object.
+            if (obj == Selection.activeObject)
             {
-                // Highlight active object.
-                if (obj == Selection.activeObject)
-                {
-                    EditorGUI.DrawRect(row.rect, isWindowFocused ? _activeHighlightColor : _inactiveHighlightColor);
-                }
-
-                // Draw item as button.
-                var itemButtonContent = new GUIContent(obj.name, EditorGUIUtility.ObjectContent(obj, item.GetType()).image);
-                var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
-                if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
-                {
-                    var clickTime = EditorApplication.timeSinceStartup;
-                    if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
-                    {
-                        AssetDatabase.OpenAsset(obj);
-                        if (item.Data.Type is SelectableType.Asset)
-                        {
-                            EditorUtility.FocusProjectWindow();
-                        }
-                    }
-
-                    SetSelection(obj);
-                    item.LastClickTime = clickTime;
-                }
-
-                const float buttonWidth = 20;
-                GUILayout.Space(buttonWidth * 2 + 3);
-
-                var buttonRect = row.rect;
-                buttonRect.width = buttonWidth;
-
-                // Draw Favorite Button.
-                if (item.IsPinned || Selection.activeObject == item.Object || isWindowFocused)
-                {
-                    buttonRect.x = row.rect.width - buttonWidth;
-                    GUI.color = item.IsPinned ? Color.yellow : Color.gray;
-
-                    if (GUI.Button(buttonRect, EditorGUIUtility.IconContent("Favorite Icon"), EditorStyles.label))
-                    {
-                        item.IsPinned = !item.IsPinned;
-                    }
-
-                    GUI.color = cacheGuiColor;
-                }
-
-                // Draw Context
-                if (item.SceneAsset != null)
-                {
-                    buttonRect.x = row.rect.width - buttonWidth * 2;
-                    GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_SceneAsset Icon").image);
-                }
-                else if (item.PrefabAsset != null)
-                {
-                    buttonRect.x = row.rect.width - buttonWidth * 2;
-                    GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_Prefab Icon").image);
-                }
-
-                // // Draw "remove" button.
-                // if (GUILayout.Button(
-                //         EditorGUIUtility.IconContent("d_winbtn_win_close"),
-                //         GUILayout.MaxWidth(buttonWidth),
-                //         _singleLineHeightOption))
-                // {
-                //     
-                // }
+                EditorGUI.DrawRect(row.rect, isWindowFocused ? _activeHighlightColor : _inactiveHighlightColor);
             }
+
+            // Draw item as button.
+            var itemButtonContent = new GUIContent(obj.name, EditorGUIUtility.ObjectContent(obj, item.GetType()).image);
+            var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
+            if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
+            {
+                var clickTime = EditorApplication.timeSinceStartup;
+                if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
+                {
+                    AssetDatabase.OpenAsset(obj);
+                    if (item.Data.Type is SelectableType.Asset)
+                    {
+                        EditorUtility.FocusProjectWindow();
+                    }
+                }
+
+                SetSelection(obj);
+                item.LastClickTime = clickTime;
+            }
+
+            const float buttonWidth = 20;
+            GUILayout.Space(buttonWidth * 2 + 3);
+
+            var buttonRect = row.rect;
+            buttonRect.width = buttonWidth;
+
+            // Draw Favorite Button.
+            if (item.IsPinned || Selection.activeObject == item.Object || isWindowFocused)
+            {
+                buttonRect.x = row.rect.width - buttonWidth;
+                GUI.color = item.IsPinned ? Color.yellow : Color.gray;
+
+                if (GUI.Button(buttonRect, EditorGUIUtility.IconContent("Favorite Icon"), EditorStyles.label))
+                {
+                    item.IsPinned = !item.IsPinned;
+                }
+
+                GUI.color = cacheGuiColor;
+            }
+
+            // Draw Context
+            if (item.SceneContext != null)
+            {
+                buttonRect.x = row.rect.width - buttonWidth * 2;
+                GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_SceneAsset Icon").image);
+            }
+            else if (item.PrefabContext != null)
+            {
+                buttonRect.x = row.rect.width - buttonWidth * 2;
+                GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_Prefab Icon").image);
+            }
+
+            // // Draw "remove" button.
+            // if (GUILayout.Button(
+            //         EditorGUIUtility.IconContent("d_winbtn_win_close"),
+            //         GUILayout.MaxWidth(buttonWidth),
+            //         _singleLineHeightOption))
+            // {
+            //     
+            // }
         }
 
         private void SetSelection(Object obj)
@@ -526,8 +549,8 @@ namespace Nomad.EditorUtilities
         {
             internal readonly SerializableSelectionData Data;
             internal readonly Object Object;
-            internal readonly SceneAsset SceneAsset;
-            internal readonly Object PrefabAsset;
+            internal readonly SceneAsset SceneContext;
+            internal readonly GameObject PrefabContext;
             internal bool IsPinned;
             internal double LastClickTime;
 
@@ -558,12 +581,12 @@ namespace Nomad.EditorUtilities
                     case SelectableContextType.Project:
                         break;
                     case SelectableContextType.Scene:
-                        SceneAsset =
+                        SceneContext =
                             AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         break;
                     case SelectableContextType.Prefab:
-                        PrefabAsset =
-                            AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        PrefabContext =
+                            AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
