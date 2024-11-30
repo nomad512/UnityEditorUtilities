@@ -420,7 +420,12 @@ namespace Nomad.EditorUtilities
         {
             if (item is null) return;
             var obj = item.Object;
-            if (obj == null) return;
+            if (obj == null)
+            {
+                // if (item.Data.Type is SelectableType.Instance)
+                //     EditorGUILayout.LabelField(item.Data.PathFromContext + " " + item.Data.ContextGuid);
+                return;
+            }
             using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
 
             // Highlight active object.
