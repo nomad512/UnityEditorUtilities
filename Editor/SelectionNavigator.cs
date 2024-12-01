@@ -13,6 +13,29 @@ namespace Nomad.EditorUtilities
 {
     internal class SelectionNavigator : EditorWindow
     {
+        private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
+        private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
+        private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
+        private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
+
+        // TODO: disable all history recording until the window is opened for the first time.
+        // TODO: add ability to toggle on/off all history recording in settings. Show a warning in the history list when recording is disabled.
+        // TODO: "blacklist" functionality: remove an item from history and don't show it again.  
+
+        private static event Action UpdatedHistory;
+        private static int _historyMaxSize = 32;
+        private static SelectionItem _selectedItem;
+        private static List<SelectionItem> _historyItems;
+        private static SceneAsset _currentSceneContext;
+        private static GameObject _currentPrefabContext;
+        private static bool _skipNextSelection;
+        private static Dictionary<SelectionItem, List<SelectionItem>> _selectionHistoryByContext; // TODO: sort items based on context
+
+        // UI
+        private static Texture _sceneIcon;
+        private static readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
+        // TODO: cache icons: "prefab", "pinned" 
+
         private enum Tab
         {
             None = -1,
@@ -21,29 +44,11 @@ namespace Nomad.EditorUtilities
             Settings
         }
 
-        private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
-        private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
-        private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
-
-        private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
-        // TODO: disable all history recording until the window is opened for the first time.
-        // TODO: add ability to toggle on/off all history recording in settings. Show a warning in the history list when recording is disabled.
-
-        private static Texture _sceneIcon;
-
-        private static event Action UpdatedHistory;
-        private static int _historyMaxSize = 32;
-        private static SelectionItem _selectedItem;
-        private static List<SelectionItem> _historyItems;
-        private static bool _skipNextSelection;
-
-        private static SceneAsset _currentSceneContext;
-        private static GameObject _currentPrefabContext;
-
+        // User Settings
         private static bool _recordFolders = true;
         private static bool _recordPrefabStageObjects;
 
-
+        // EditorWindow Instance State
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
         private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
         private Vector2 _historyScrollPosition;
@@ -52,13 +57,10 @@ namespace Nomad.EditorUtilities
         private TabBar _tabBar;
         private Tab _currentTab;
         private Tab _queuedTab = Tab.None;
-
         private AnimBool _anim_ShowPinnedStagingArea;
         private AnimBool _animShowContextArea;
         private AnimBool _anim_ShowSceneContext;
-
-        private static readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(EditorGUIUtility.singleLineHeight);
-
+        // TODO: split static and instance into two classes
 
         [InitializeOnLoadMethod]
         internal static void Initialize()
@@ -110,11 +112,12 @@ namespace Nomad.EditorUtilities
         internal static void ShowWindow() => GetWindow<SelectionNavigator>();
 
         /// Called when the active selection changed, whether an instance of the window exists or not.
+        /// Analyzes the current active selection and records to history if applicable.
         private static void OnSelectionChangedGlobal()
         {
             if (_skipNextSelection)
             {
-                _skipNextSelection = false;
+                _skipNextSelection = false; // This flag is used to avoid modifying history while changing selection via this tool.
                 return;
             }
 
@@ -143,14 +146,15 @@ namespace Nomad.EditorUtilities
 
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
             _selectedItem = item;
-            if (!_recordPrefabStageObjects && item.PrefabContext) return; // Ignore prefab members. // TODO: implement temporary context
+            if (!_recordPrefabStageObjects && item.PrefabContext) return; // Ignore prefab members.
 
             while (_historyItems.Count >= _historyMaxSize)
             {
-                for (int i = _historyItems.Count - 1; i >= 0; i--)
+                for (var i = _historyItems.Count - 1; i >= 0; i--)
                 {
+                    // Limit size, but don't remove Pinned items.
                     if (_historyItems[i].IsPinned) continue;
-                    _historyItems.RemoveAt(i); // Limit size, but don't remove Pinned items.
+                    _historyItems.RemoveAt(i);
                     break;
                 }
             }
@@ -158,6 +162,8 @@ namespace Nomad.EditorUtilities
             if (!alreadyRecorded && _historyItems.Count < _historyMaxSize)
             {
                 _historyItems.Insert(0, item); // Add to beginning of list.
+
+                // TODO: apply sorting and grouping here
             }
 
             UpdatedHistory?.Invoke();
@@ -285,7 +291,6 @@ namespace Nomad.EditorUtilities
             for (var i = _historyItems.Count - 1; i >= 0; i--)
             {
                 var item = _historyItems[i];
-                // TODO: keep object instances that may be in a temporarily invalid context (i.e. from an inactive scene)
                 if (item.Object == null)
                 {
                     if (item.Data.ContextType is SelectableContextType.Project)
@@ -294,13 +299,14 @@ namespace Nomad.EditorUtilities
                     }
                     else if (item.IsContextValid)
                     {
-                        item.Object = GameObject.Find(item.Data.PathFromContext);
+                        item.Object = GameObject.Find(item.Data.PathFromContext); // Find an object within the current context.
                     }
                     // else Debug.LogError($"Could not resolve item in the current context. ({item.Data.PathFromContext})");
                 }
             }
         }
 
+        // TODO: draw context items in groups
         private void DrawHistory()
         {
             var cacheGuiColor = GUI.color;
@@ -426,6 +432,7 @@ namespace Nomad.EditorUtilities
                 //     EditorGUILayout.LabelField(item.Data.PathFromContext + " " + item.Data.ContextGuid);
                 return;
             }
+
             using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
 
             // Highlight active object.
