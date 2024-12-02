@@ -16,6 +16,7 @@ namespace Nomad.EditorUtilities
         private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
         private const string PrefKey_History = "Nomad_EditorUtilities_ProjectNav_History";
         private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
+        private const string PrefKey_RecordPrefabs = "Nomad_EditorUtilities_Selection_RecordPrefabs";
         private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
 
         // TODO: disable all history recording until the window is opened for the first time.
@@ -26,10 +27,56 @@ namespace Nomad.EditorUtilities
         private static int _historyMaxSize = 32;
         private static SelectionItem _selectedItem;
         private static List<SelectionItem> _historyItems;
+        private static Dictionary<ContextItem, List<SelectionItem>> _selectionHistoryByContext;
         private static SceneAsset _currentSceneContext;
         private static GameObject _currentPrefabContext;
+        private static ContextItem _currentContextItem;
         private static bool _skipNextSelection;
-        private static Dictionary<SelectionItem, List<SelectionItem>> _selectionHistoryByContext; // TODO: sort items based on context
+
+        // TODO: consolidate ContextItem.Type and SerializableSelectionData.ContextType
+        private readonly struct ContextItem
+        {
+            internal readonly SelectableContextType Type;
+            internal readonly SceneAsset SceneAsset;
+            internal readonly GameObject PrefabAsset;
+
+            internal ContextItem(Object obj)
+            {
+                switch (obj)
+                {
+                    case SceneAsset sceneAsset:
+                        Type = SelectableContextType.Scene;
+                        SceneAsset = sceneAsset;
+                        PrefabAsset = null;
+                        break;
+                    case GameObject gameObject:
+                        Type = SelectableContextType.Prefab;
+                        SceneAsset = null;
+                        PrefabAsset = gameObject;
+                        Debug.Assert(!gameObject.scene.IsValid()); // Object should NOT be a GameObject instance in a scene.
+                        break;
+                    default:
+                        Type = SelectableContextType.Invalid;
+                        SceneAsset = null;
+                        PrefabAsset = null;
+                        break;
+                }
+            }
+
+            public override int GetHashCode()
+            {
+                switch (Type)
+                {
+                    case SelectableContextType.Scene:
+                        return SceneAsset.GetHashCode();
+                    case SelectableContextType.Prefab:
+                        return PrefabAsset.GetHashCode();
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+
 
         // UI
         private static Texture _sceneIcon;
@@ -46,7 +93,7 @@ namespace Nomad.EditorUtilities
 
         // User Settings
         private static bool _recordFolders = true;
-        private static bool _recordPrefabStageObjects;
+        private static bool _recordPrefabStageObjects = true;
 
         // EditorWindow Instance State
         private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
@@ -67,11 +114,12 @@ namespace Nomad.EditorUtilities
         {
             Selection.selectionChanged += OnSelectionChangedGlobal;
             _historyItems = new List<SelectionItem>();
+            _selectionHistoryByContext = new Dictionary<ContextItem, List<SelectionItem>>();
             // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
 
             PrefabStage.prefabStageOpened += (_) => GetCurrentPrefabContext();
             PrefabStage.prefabStageClosing += (_) => GetCurrentPrefabContext();
-            EditorSceneManager.activeSceneChanged += (_, _) => GetCurrentSceneContext(); // TODO: multi-scene support
+            SceneManager.activeSceneChanged += (_, _) => GetCurrentSceneContext(); // TODO: multi-scene support
             EditorSceneManager.sceneOpened += (_, _) => GetCurrentSceneContext(); // TODO: multi-scene support
 
             _sceneIcon = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
@@ -83,10 +131,12 @@ namespace Nomad.EditorUtilities
             if (prefabStage == null)
             {
                 _currentPrefabContext = null;
+                _currentContextItem = new ContextItem(_currentSceneContext);
             }
             else
             {
                 _currentPrefabContext = AssetDatabase.LoadAssetAtPath<GameObject>(prefabStage.assetPath);
+                _currentContextItem = new ContextItem(_currentSceneContext);
             }
 
             UpdatedHistory?.Invoke();
@@ -98,10 +148,12 @@ namespace Nomad.EditorUtilities
             if (activeScene.IsValid())
             {
                 _currentSceneContext = AssetDatabase.LoadAssetAtPath<SceneAsset>(activeScene.path);
+                _currentContextItem = new ContextItem(_currentSceneContext);
             }
             else
             {
                 _currentSceneContext = null;
+                _currentContextItem = new ContextItem();
             }
 
             UpdatedHistory?.Invoke();
@@ -146,7 +198,7 @@ namespace Nomad.EditorUtilities
 
             item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
             _selectedItem = item;
-            if (!_recordPrefabStageObjects && item.PrefabContext) return; // Ignore prefab members.
+            if (!_recordPrefabStageObjects && item.Data.ContextType is SelectableContextType.Prefab) return; // Ignore prefab members.
 
             while (_historyItems.Count >= _historyMaxSize)
             {
@@ -162,8 +214,18 @@ namespace Nomad.EditorUtilities
             if (!alreadyRecorded && _historyItems.Count < _historyMaxSize)
             {
                 _historyItems.Insert(0, item); // Add to beginning of list.
+                
+                if (item.Context.Type is SelectableContextType.Prefab or SelectableContextType.Scene)
+                {
+                    if (!_selectionHistoryByContext.TryGetValue(item.Context, out var contextItems))
+                    {
+                        contextItems = new List<SelectionItem>();
+                        _selectionHistoryByContext.Add(item.Context, contextItems);
 
-                // TODO: apply sorting and grouping here
+                    }
+                    contextItems.Add(item);
+                }
+                // TODO: apply sorting here
             }
 
             UpdatedHistory?.Invoke();
@@ -317,9 +379,11 @@ namespace Nomad.EditorUtilities
             using (var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition))
             {
                 _historyScrollPosition = scrollView.scrollPosition;
-                DrawContext();
+                DrawContext(isWindowFocused);
                 foreach (var item in _historyItems)
                 {
+                    if (item.Data.ContextType is not SelectableContextType.Project)
+                        continue;
                     DrawItem(item, isWindowFocused, cacheGuiColor);
                 }
             }
@@ -363,6 +427,13 @@ namespace Nomad.EditorUtilities
                     EditorPrefs.SetBool(PrefKey_RecordFolders, recordFolders);
                 }
 
+                var recordPrefabs = EditorGUILayout.Toggle(new GUIContent("Include Prefabs", "If true, prefab edit mode may be included in history."), _recordPrefabStageObjects);
+                if (recordPrefabs != _recordPrefabStageObjects)
+                {
+                    _recordPrefabStageObjects = recordPrefabs;
+                    EditorPrefs.SetBool(PrefKey_RecordPrefabs, recordPrefabs);
+                }
+
                 using (new EditorGUI.DisabledScope(true))
                 {
                     var historySize = EditorGUILayout.IntField(new GUIContent("History Size", "The max number of items recorded in history."), _historyMaxSize);
@@ -391,7 +462,7 @@ namespace Nomad.EditorUtilities
             }
         }
 
-        private void DrawContext()
+        private void DrawContext(bool isWindowFocused)
         {
             var hasPrefabContext = _currentPrefabContext is not null;
             var hasSceneContext = _currentSceneContext is not null;
@@ -418,6 +489,16 @@ namespace Nomad.EditorUtilities
                         EditorStyles.label,
                         _guiMaxHeightSingleLine
                     );
+                    
+                    if (_selectionHistoryByContext.TryGetValue(_currentContextItem, out var contextItems))
+                    {
+                        EditorGUI.indentLevel += 1;;
+                        foreach (var item in contextItems)
+                        {
+                            DrawItem(item, isWindowFocused, GUI.color);
+                        }
+                        EditorGUI.indentLevel -= 1;
+                    }
                 }
             }
         }
@@ -444,6 +525,8 @@ namespace Nomad.EditorUtilities
             // Draw item as button.
             var itemButtonContent = new GUIContent(obj.name, EditorGUIUtility.ObjectContent(obj, item.GetType()).image);
             var itemButtonRect = GUILayoutUtility.GetRect(itemButtonContent, EditorStyles.label, GUILayout.MinWidth(100), _guiMaxHeightSingleLine);
+            itemButtonRect.x += EditorGUI.indentLevel * 10;
+            itemButtonRect.width -= EditorGUI.indentLevel * 10;
             if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
             {
                 var clickTime = EditorApplication.timeSinceStartup;
@@ -481,16 +564,16 @@ namespace Nomad.EditorUtilities
             }
 
             // Draw Context
-            if (item.SceneContext != null)
+            if (item.Context.Type is SelectableContextType.Scene && item.Context.SceneAsset)
             {
                 buttonRect.x = row.rect.width - buttonWidth * 2;
                 if (GUI.Button(buttonRect, _sceneIcon, EditorStyles.label))
                 {
-                    EditorGUIUtility.PingObject(item.SceneContext);
+                    EditorGUIUtility.PingObject(item.Context.SceneAsset);
                 }
                 // GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_SceneAsset Icon").image);
             }
-            else if (item.PrefabContext != null)
+            else if (item.Context.Type is SelectableContextType.Prefab && item.Context.PrefabAsset)
             {
                 buttonRect.x = row.rect.width - buttonWidth * 2;
                 GUI.DrawTexture(buttonRect, EditorGUIUtility.IconContent("d_Prefab Icon").image);
@@ -519,6 +602,7 @@ namespace Nomad.EditorUtilities
         private void ClearLoadedHistory()
         {
             _historyItems.Clear();
+            _selectionHistoryByContext.Clear();
         }
 
         private static void SaveHistoryToDisk()
@@ -562,6 +646,18 @@ namespace Nomad.EditorUtilities
                 }
 
                 _historyItems.Add(item);
+                
+                // TODO: DRY with OnSelectionChangedGlobal
+                if (item.Context.Type is SelectableContextType.Prefab or SelectableContextType.Scene)
+                {
+                    if (!_selectionHistoryByContext.TryGetValue(item.Context, out var contextItems))
+                    {
+                        contextItems = new List<SelectionItem>();
+                        _selectionHistoryByContext.Add(item.Context, contextItems);
+
+                    }
+                    contextItems.Add(item);
+                }
             }
         }
 
@@ -649,8 +745,10 @@ namespace Nomad.EditorUtilities
         private class SelectionItem
         {
             internal readonly SerializableSelectionData Data;
-            internal readonly SceneAsset SceneContext;
-            internal readonly GameObject PrefabContext;
+            internal readonly ContextItem Context;
+
+            // internal readonly SceneAsset SceneContext;
+            // internal readonly GameObject PrefabContext;
             internal Object Object;
             internal bool IsPinned;
             internal double LastClickTime;
@@ -660,11 +758,25 @@ namespace Nomad.EditorUtilities
                 get
                 {
                     if (Data.Type == SelectableType.Asset) return true;
-                    if (SceneContext is not null && SceneContext == _currentSceneContext) return true;
-                    if (PrefabContext is not null && PrefabContext == _currentPrefabContext) return true;
+                    if (Context.Type is SelectableContextType.Scene && Context.SceneAsset == _currentSceneContext) return true;
+                    if (Context.Type is SelectableContextType.Prefab && Context.PrefabAsset == _currentPrefabContext) return true;
+                    // if (SceneContext is not null && SceneContext == _currentSceneContext) return true;
+                    // if (PrefabContext is not null && PrefabContext == _currentPrefabContext) return true;
                     return false;
                 }
             }
+
+            // internal ContextItem 
+            // {
+            //     get => Data.ContextType switch
+            //     {
+            //         SelectableContextType.Invalid => new ContextItem(),
+            //         SelectableContextType.Project => new ContextItem(),
+            //         SelectableContextType.Scene => new ContextItem(),
+            //         SelectableContextType.Prefab => expr,
+            //         _ => throw new ArgumentOutOfRangeException()
+            //     }
+            // }
 
             internal const float DoubleClickMaxDuration = 0.5f;
 
@@ -695,12 +807,12 @@ namespace Nomad.EditorUtilities
                     case SelectableContextType.Project:
                         break;
                     case SelectableContextType.Scene:
-                        SceneContext =
-                            AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        Context = new ContextItem(sceneAsset);
                         break;
                     case SelectableContextType.Prefab:
-                        PrefabContext =
-                            AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        var prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
+                        Context = new (prefabAsset);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
