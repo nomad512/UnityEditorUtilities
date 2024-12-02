@@ -163,7 +163,7 @@ namespace Nomad.EditorUtilities
                         _selectionHistoryByContext.Add(item.Context, contextItems);
                     }
 
-                    contextItems.Add(item);
+                    contextItems.Insert(0, item);
                 }
                 // TODO: apply sorting here
             }
@@ -238,8 +238,8 @@ namespace Nomad.EditorUtilities
             {
                 switch (Event.current.keyCode)
                 {
-                    case KeyCode.UpArrow: selectNext(-1); break;
-                    case KeyCode.DownArrow: selectNext(1); break;
+                    case KeyCode.UpArrow: SelectNext(-1); break;
+                    case KeyCode.DownArrow: SelectNext(1); break;
                     case KeyCode.P:
                     {
                         if (Selection.activeObject == null) break;
@@ -268,33 +268,31 @@ namespace Nomad.EditorUtilities
                     // TODO: focus selection
                 }
             }
+        }
 
-            return;
-
-            void selectNext(int steps)
+        private void SelectNext(int steps)
+        {
+            var items = _currentTab switch
             {
-                var items = _currentTab switch
-                {
-                    Tab.History => _historyItems,
-                    Tab.Pinned  => _historyItems.Where(x => x.IsPinned).ToList(),
-                    _           => null
-                };
+                Tab.History => _historyItems,
+                Tab.Pinned  => _historyItems.Where(x => x.IsPinned).ToList(),
+                _           => null
+            };
 
-                if (items is null || !items.Any()) return;
+            if (items is null || !items.Any()) return;
 
-                var index = 0;
-                for (var i = 0; i < items.Count; i++)
-                {
-                    if (items[i].Object != Selection.activeObject) continue;
-                    index = i + steps;
-                    index = Mathf.Clamp(index, 0, items.Count - 1);
-                    break;
-                }
-
-                var obj = items[index].Object;
-                if (obj != null)
-                    SetSelection(obj);
+            var index = 0;
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (items[i].Object != Selection.activeObject) continue;
+                index = i + steps;
+                index = Mathf.Clamp(index, 0, items.Count - 1);
+                break;
             }
+
+            var obj = items[index].Object;
+            if (obj != null)
+                SetSelection(obj);
         }
 
         private void Sanitize()
@@ -736,12 +734,12 @@ namespace Nomad.EditorUtilities
                         break;
                     case GameObject gameObject:
                         Type = SelectableContextType.Prefab;
-                        SceneAsset = null;
                         PrefabAsset = gameObject;
+                        SceneAsset = null;
                         Debug.Assert(!gameObject.scene.IsValid()); // Object should NOT be a GameObject instance in a scene.
                         break;
                     default:
-                        Type = SelectableContextType.Invalid;
+                        Type = SelectableContextType.Project;
                         SceneAsset = null;
                         PrefabAsset = null;
                         break;
@@ -765,10 +763,7 @@ namespace Nomad.EditorUtilities
         private class SelectionItem
         {
             internal readonly SerializableSelectionData Data;
-            internal readonly ContextItem Context;
-
-            // internal readonly SceneAsset SceneContext;
-            // internal readonly GameObject PrefabContext;
+            internal readonly ContextItem Context = new();
             internal Object Object;
             internal bool IsPinned;
             internal double LastClickTime;
@@ -780,27 +775,13 @@ namespace Nomad.EditorUtilities
                     if (Data.Type == SelectableType.Asset) return true;
                     if (Context.Type is SelectableContextType.Scene && Context.SceneAsset == _currentSceneContext) return true;
                     if (Context.Type is SelectableContextType.Prefab && Context.PrefabAsset == _currentPrefabContext) return true;
-                    // if (SceneContext is not null && SceneContext == _currentSceneContext) return true;
-                    // if (PrefabContext is not null && PrefabContext == _currentPrefabContext) return true;
                     return false;
                 }
             }
 
-            // internal ContextItem 
-            // {
-            //     get => Data.ContextType switch
-            //     {
-            //         SelectableContextType.Invalid => new ContextItem(),
-            //         SelectableContextType.Project => new ContextItem(),
-            //         SelectableContextType.Scene => new ContextItem(),
-            //         SelectableContextType.Prefab => expr,
-            //         _ => throw new ArgumentOutOfRangeException()
-            //     }
-            // }
-
             internal const float DoubleClickMaxDuration = 0.5f;
-
-            public SelectionItem(SerializableSelectionData data)
+            
+            internal SelectionItem(SerializableSelectionData data)
             {
                 Data = data;
 
