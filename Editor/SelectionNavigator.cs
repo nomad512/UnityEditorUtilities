@@ -18,6 +18,8 @@ namespace Nomad.EditorUtilities
         private const string PrefKey_RecordFolders = "Nomad_EditorUtilities_Selection_RecordFolders";
         private const string PrefKey_RecordPrefabs = "Nomad_EditorUtilities_Selection_RecordPrefabs";
         private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
+        private const float DoubleClickMaxDuration = 0.5f;
+
 
         // TODO: disable all history recording until the window is opened for the first time.
         // TODO: add ability to toggle on/off all history recording in settings. Show a warning in the history list when recording is disabled.
@@ -240,6 +242,14 @@ namespace Nomad.EditorUtilities
 
             _allHistoryItems.Add(item);
         }
+        
+        private static void SetSelection(Object obj)
+        {
+            _skipNextSelection = true;
+            Selection.activeObject = obj;
+            EditorGUIUtility.PingObject(obj);
+            UpdatedHistory?.Invoke();
+        }
 
         #region Editor Window
 
@@ -326,6 +336,25 @@ namespace Nomad.EditorUtilities
                         Event.current.Use(); 
                         break;
                     }
+                    
+                    case KeyCode.Space:
+                        var sb = new StringBuilder();
+                        foreach (var context in _historyContexts)
+                        {
+                            sb.AppendLine($"[{context.Name}]");
+                            foreach (var item in context.Items)
+                            {
+                                sb.Append(" - ").AppendLine(item.Name);
+                            }
+                        }
+                        sb.AppendLine($"[{_projectContext.Name}]");
+                        foreach (var item in _projectContext.Items)
+                        {
+                            sb.Append(" - ").AppendLine(item.Name);
+                        }
+                        Debug.Log(sb.ToString());
+                        Event.current.Use();
+                        break;
                     
                     case KeyCode.Tab:
                         _tabBar.Step(Event.current.shift ? -1 : 1);
@@ -528,9 +557,10 @@ namespace Nomad.EditorUtilities
             // if (!_animShowContextArea.target) _animShowContextArea.value = false; // Close instantly because the close animation is glitchy for some reason.
             var verticalScope = context.Type switch
             {
+                ContextType.Project => new GUILayout.VerticalScope(),
                 ContextType.Scene => new GUILayout.VerticalScope(EditorStyles.helpBox),
                 ContextType.Prefab => new GUILayout.VerticalScope(EditorStyles.helpBox),
-                _ => new GUILayout.VerticalScope()
+                _ => throw new ArgumentOutOfRangeException()
             };
 
             var headerContent = context.Type switch
@@ -543,11 +573,14 @@ namespace Nomad.EditorUtilities
             
             using (verticalScope)
             {
-                GUILayout.Button(
-                    headerContent,
-                    EditorStyles.label,
-                    _guiMaxHeightSingleLine
-                );
+                if (GUILayout.Button(
+                        headerContent,
+                        EditorStyles.label,
+                        _guiMaxHeightSingleLine
+                    ))
+                {
+                    context.OnClick();
+                }
                 EditorGUI.indentLevel += 1;
                 foreach (var item in context.Items)
                 {
@@ -584,18 +617,7 @@ namespace Nomad.EditorUtilities
             itemButtonRect.width -= EditorGUI.indentLevel * 10;
             if (GUI.Button(itemButtonRect, itemButtonContent, EditorStyles.label))
             {
-                var clickTime = EditorApplication.timeSinceStartup;
-                if (clickTime - item.LastClickTime < SelectionItem.DoubleClickMaxDuration)
-                {
-                    AssetDatabase.OpenAsset(obj);
-                    if (item.Data.ContextType is ContextType.Project)
-                    {
-                        EditorUtility.FocusProjectWindow();
-                    }
-                }
-
-                SetSelection(obj);
-                item.LastClickTime = clickTime;
+                item.OnClick();
             }
 
             const float buttonWidth = 20;
@@ -642,14 +664,6 @@ namespace Nomad.EditorUtilities
             // {
             //     
             // }
-        }
-
-        private void SetSelection(Object obj)
-        {
-            _skipNextSelection = true;
-            Selection.activeObject = obj;
-            EditorGUIUtility.PingObject(obj);
-            Repaint();
         }
 
         #endregion
@@ -785,21 +799,22 @@ namespace Nomad.EditorUtilities
 
         private class SelectionContext
         {
-            // TODO: Nice Name
+            internal string Name;
             internal readonly ContextType Type;
             internal readonly SceneAsset SceneAsset;
             internal readonly GameObject PrefabAsset;
             internal readonly string Guid;
             internal readonly List<SelectionItem> Items = new();
+            private double _lastClickTime;
 
-            // internal Object Object => Type switch
-            // {
-            //     ContextType.Invalid => null,
-            //     ContextType.Project => null,
-            //     ContextType.Scene => SceneAsset,
-            //     ContextType.Prefab => PrefabAsset,
-            //     _ => throw new ArgumentOutOfRangeException()
-            // };
+            private Object _object => Type switch
+            {
+                ContextType.Invalid => null,
+                ContextType.Project => null,
+                ContextType.Scene => SceneAsset,
+                ContextType.Prefab => PrefabAsset,
+                _ => throw new ArgumentOutOfRangeException()
+            };
 
             internal bool IsActive => Type switch
             {
@@ -810,49 +825,47 @@ namespace Nomad.EditorUtilities
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            // internal SelectionContext(SerializableSelectionData data)
-            // {
-            //     Type = data.ContextType;
-            //     Guid = data.ContextGuid;
-            //     var asset = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
-            //     SceneAsset = asset as SceneAsset;
-            //     PrefabAsset = asset as GameObject;
-            // }
-            
             internal SelectionContext(Object contextObject)
             {
                 switch (contextObject)
                 {
                     case SceneAsset sceneAsset:
+                        Name = sceneAsset.name;
                         Type = ContextType.Scene;
                         SceneAsset = sceneAsset;
                         Guid = AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(sceneAsset)).ToString();
                         break;
                     case GameObject gameObject:
+                        Name = gameObject.name;
                         Type = ContextType.Prefab;
                         PrefabAsset = gameObject;
                         Guid = AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(gameObject)).ToString();
                         Debug.Assert(!gameObject.scene.IsValid()); // Prefab object should NOT be a GameObject instance in a scene.
                         break;
                     default:
+                        Name = "Project";
                         Type = ContextType.Project;
                         break;
                 }
             }
             
-            // public override int GetHashCode()
-            // {
-            //     switch (Type)
-            //     {
-            //         case ContextType.Scene:
-            //             return SceneAsset.GetHashCode();
-            //         case ContextType.Prefab:
-            //             return PrefabAsset.GetHashCode();
-            //         default:
-            //             Debug.LogError(Type);
-            //             throw new ArgumentOutOfRangeException();
-            //     }
-            // }
+            internal void OnClick()
+            {
+                var clickTime = EditorApplication.timeSinceStartup;
+                if (clickTime - _lastClickTime < DoubleClickMaxDuration)
+                {
+                    AssetDatabase.OpenAsset(_object);
+                    if (Type is ContextType.Project)
+                    {
+                        EditorUtility.FocusProjectWindow();
+                    }
+                }
+
+                SetSelection(_object);
+                EditorGUIUtility.PingObject(_object);
+
+                _lastClickTime = clickTime;
+            }
         }
 
         private class SelectionItem
@@ -860,8 +873,11 @@ namespace Nomad.EditorUtilities
             internal readonly SerializableSelectionData Data;
             internal readonly SelectionContext Context;
             internal Object Object;
+            
+            internal string Name;
             internal bool IsPinned;
-            internal double LastClickTime;
+            
+            private double _lastClickTime;
             
             internal bool IsContextValid
             {
@@ -883,7 +899,6 @@ namespace Nomad.EditorUtilities
                 }
             }
 
-            internal const float DoubleClickMaxDuration = 0.5f;
 
             internal SelectionItem(SerializableSelectionData data)
             {
@@ -898,24 +913,49 @@ namespace Nomad.EditorUtilities
                     case ContextType.Project:
                         Object = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ObjectGuid));
                         Context = new SelectionContext(null);
+                        Name = Object ? Object.name : "missing asset";
                         break;
                     
                     case ContextType.Scene:
                         var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         Context = new SelectionContext(sceneAsset);
                         if (IsContextValid)
+                        {
                             Object = GameObject.Find(data.ObjectPath);
+                            Name = Object ? Object.name : "unknown scene member";
+                        }
                         break;
                         
                     case ContextType.Prefab:
                         var prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         Context = new SelectionContext(prefabAsset);
                         if (IsContextValid)
+                        {
                             Object = GameObject.Find(data.ObjectPath);
+                            Name = Object ? Object.name : "unknown prefab member";
+                        }
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+            }
+
+            internal void OnClick()
+            {
+                var clickTime = EditorApplication.timeSinceStartup;
+                if (clickTime - _lastClickTime < DoubleClickMaxDuration)
+                {
+                    AssetDatabase.OpenAsset(Object);
+                    if (Data.ContextType is ContextType.Project)
+                    {
+                        EditorUtility.FocusProjectWindow();
+                    }
+                }
+
+                SetSelection(Object);
+                EditorGUIUtility.PingObject(Object);
+
+                _lastClickTime = clickTime;
             }
         }
 
