@@ -77,8 +77,8 @@ namespace Nomad.EditorUtilities
             ClearLoadedHistory();
             GetCurrentSceneContexts();
             GetCurrentPrefabContext();
-            RecordSelection();
-
+            
+            // TODO: any prior error in this function will cause event subscriptions to fail
             Selection.selectionChanged += RecordSelection;
             PrefabStage.prefabStageOpened += (_) => GetCurrentPrefabContext();
             PrefabStage.prefabStageClosing += (_) => GetCurrentPrefabContext();
@@ -194,11 +194,11 @@ namespace Nomad.EditorUtilities
                     return _projectContext;
                 case ContextType.Scene:
                 case ContextType.Prefab:
-                    foreach (var sceneContext in _historyContexts)
+                    foreach (var context in _historyContexts)
                     {
-                        if (item.Data.ContextGuid == sceneContext.Guid)
+                        if (item.Data.ContextGuid == context.Guid)
                         {
-                            return sceneContext;
+                            return context;
                         }
                     }
 
@@ -345,7 +345,10 @@ namespace Nomad.EditorUtilities
                             sb.AppendLine($"[{context.Name}]");
                             foreach (var item in context.Items)
                             {
-                                sb.Append(" - ").AppendLine(item.Name);
+                                if (string.IsNullOrEmpty(item.Name))
+                                    sb.Append(" - ").AppendLine(item.Data.ObjectPath);
+                                else
+                                    sb.Append(" - ").AppendLine(item.Name);
                             }
                         }
 
@@ -469,12 +472,13 @@ namespace Nomad.EditorUtilities
                 // using (new EditorGUI.DisabledScope(!context.IsActive))
                 {
                     if (!isActive) GUI.color = Color.gray;
-                    DrawContext(context);
+                    DrawContext(context, isActive);
                     GUI.color = cacheGuiColor;
                 }
             }
 
-            DrawContext(_projectContext);
+            DrawContext(_projectContext, true);
+            
         }
 
         private void DrawPinned()
@@ -594,7 +598,7 @@ namespace Nomad.EditorUtilities
             }
         }
 
-        private void DrawContext(SelectionContext context)
+        private void DrawContext(SelectionContext context, bool isActive)
         {
             var verticalScope = context.Type switch
             {
@@ -623,7 +627,7 @@ namespace Nomad.EditorUtilities
                     context.OnClick();
                 }
 
-                if (GUI.enabled)
+                if (isActive)
                 {
                     EditorGUI.indentLevel += 1;
                     foreach (var item in context.Items)
@@ -642,8 +646,8 @@ namespace Nomad.EditorUtilities
             var obj = item.Object;
             if (obj == null)
             {
-                // if (item.Data.Type is SelectableType.Instance)
-                //     EditorGUILayout.LabelField(item.Data.PathFromContext + " " + item.Data.ContextGuid);
+                if (item.Data.ContextType is ContextType.Prefab)
+                    EditorGUILayout.LabelField(item.Data.ObjectPath + " " + item.Data.ContextGuid);
                 return;
             }
 
@@ -943,7 +947,6 @@ namespace Nomad.EditorUtilities
                 }
             }
 
-
             internal SelectionItem(SerializableSelectionData data)
             {
                 Data = data;
@@ -957,7 +960,6 @@ namespace Nomad.EditorUtilities
                     case ContextType.Project:
                         Object = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ObjectGuid));
                         Context = new SelectionContext(null);
-                        Name = Object ? Object.name : "missing asset";
                         break;
                     
                     case ContextType.Scene:
@@ -966,7 +968,6 @@ namespace Nomad.EditorUtilities
                         if (IsContextValid)
                         {
                             Object = GameObject.Find(data.ObjectPath);
-                            Name = Object ? Object.name : "unknown scene member";
                         }
                         break;
                         
@@ -976,7 +977,6 @@ namespace Nomad.EditorUtilities
                         if (IsContextValid)
                         {
                             Object = GameObject.Find(data.ObjectPath);
-                            Name = Object ? Object.name : "unknown prefab member";
                         }
                         break;
                     default:
