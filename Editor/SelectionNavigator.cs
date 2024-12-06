@@ -29,6 +29,7 @@ namespace Nomad.EditorUtilities
         private static SelectionItem _selectedItem;
         private static List<SelectionItem> _allHistoryItems; // TODO: Can this be factored out, only using SelectionContexts?
         private static List<SelectionContext> _historyContexts;
+        private static List<SelectionItem> _drawnItems;
         private static SelectionContext _projectContext;
         private static string _currentPrefabGuid;
         private static List<string> _currentSceneGuids;
@@ -70,20 +71,22 @@ namespace Nomad.EditorUtilities
         [InitializeOnLoadMethod]
         internal static void Initialize()
         {
-            _allHistoryItems = new List<SelectionItem>();
+            _allHistoryItems = new List<SelectionItem>(_historyMaxSize);
+            _drawnItems = new List<SelectionItem>(_historyMaxSize);
             _historyContexts = new List<SelectionContext>();
             _currentPrefabGuid = string.Empty;
             _currentSceneGuids = new List<string>();
             ClearLoadedHistory();
-            GetCurrentSceneContexts();
-            GetCurrentPrefabContext();
-            
+            // GetCurrentSceneContexts();
+            // GetCurrentPrefabContext();
+
             // TODO: any prior error in this function will cause event subscriptions to fail
             Selection.selectionChanged += RecordSelection;
             PrefabStage.prefabStageOpened += (_) => GetCurrentPrefabContext();
             PrefabStage.prefabStageClosing += (_) => GetCurrentPrefabContext();
             SceneManager.activeSceneChanged += (_, _) => GetCurrentSceneContexts();
             EditorSceneManager.sceneOpened += (_, _) => GetCurrentSceneContexts();
+            EditorSceneManager.sceneClosed += (_) => GetCurrentSceneContexts();
 
             // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
         }
@@ -105,7 +108,7 @@ namespace Nomad.EditorUtilities
             {
                 _currentPrefabGuid = string.Empty;
             }
-        
+
             UpdatedHistory?.Invoke();
         }
 
@@ -117,7 +120,7 @@ namespace Nomad.EditorUtilities
                 var scene = SceneManager.GetSceneAt(i);
                 _currentSceneGuids.Add(AssetDatabase.AssetPathToGUID(scene.path));
             }
-        
+
             UpdatedHistory?.Invoke();
         }
 
@@ -169,6 +172,7 @@ namespace Nomad.EditorUtilities
                         if (i == 0 && _allHistoryItems.Count >= _historyMaxSize) return; // Cancel if all items are pinned.
                         continue;
                     }
+
                     RemoveItem(i);
                     break;
                 }
@@ -208,13 +212,14 @@ namespace Nomad.EditorUtilities
                         isRecorded = false;
                         return new SelectionContext(contextAsset);
                     }
+
                     return null;
-                
+
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
-        
+
         // Records the item to history. 
         private static void RecordItem(SelectionItem item)
         {
@@ -246,7 +251,7 @@ namespace Nomad.EditorUtilities
                     throw new ArgumentOutOfRangeException();
             }
         }
-        
+
         private static void SetSelection(Object obj)
         {
             _skipNextSelection = true;
@@ -290,8 +295,8 @@ namespace Nomad.EditorUtilities
             UpdatedHistory += OnUpdatedHistory;
             LoadHistoryFromDisk();
             LoadPreferences();
-            // GetCurrentPrefabContext();
-            // GetCurrentSceneContext();
+            GetCurrentPrefabContext();
+            GetCurrentSceneContexts();
         }
 
         private void OnDisable()
@@ -304,7 +309,6 @@ namespace Nomad.EditorUtilities
 
         private void OnGUI()
         {
-            UpdateKeys();
             if (_queuedTab is not Tab.None)
             {
                 _tabBar.ActiveIndex = (int)_queuedTab;
@@ -312,6 +316,8 @@ namespace Nomad.EditorUtilities
             }
 
             _currentTab = (Tab)_tabBar.Draw();
+
+            UpdateKeys();
         }
 
         private void UpdateKeys()
@@ -320,15 +326,15 @@ namespace Nomad.EditorUtilities
             {
                 switch (Event.current.keyCode)
                 {
-                    case KeyCode.UpArrow: 
-                        SelectNext(-1); 
-                        Event.current.Use(); 
+                    case KeyCode.UpArrow:
+                        SelectNext(-1);
+                        Event.current.Use();
                         break;
                     case KeyCode.DownArrow:
-                        SelectNext(1); 
-                        Event.current.Use(); 
+                        SelectNext(1);
+                        Event.current.Use();
                         break;
-                    
+
                     case KeyCode.P:
                     {
                         if (_selectedItem is null) break;
@@ -401,12 +407,13 @@ namespace Nomad.EditorUtilities
         // TODO: overhaul to work with context groups
         private void SelectNext(int steps)
         {
-            var items = _currentTab switch
-            {
-                Tab.History => _allHistoryItems,
-                Tab.Pinned => _allHistoryItems.Where(x => x.IsPinned).ToList(),
-                _ => null
-            };
+            // var items = _currentTab switch
+            // {
+            //     Tab.History => _allHistoryItems,
+            //     Tab.Pinned => _allHistoryItems.Where(x => x.IsPinned).ToList(),
+            //     _ => null
+            // };
+            var items = _drawnItems;
 
             if (items is null || !items.Any()) return;
 
@@ -439,6 +446,10 @@ namespace Nomad.EditorUtilities
                     {
                         item.Object = GameObject.Find(item.Data.ObjectPath); // Find an object within the current context.
                     }
+                    else
+                    {
+                        // Debug.Log($"invalid context for {item.Data.ObjectPath}");
+                    }
                     // else Debug.LogError($"Could not resolve item in the current context. ({item.Data.PathFromContext})");
                 }
             }
@@ -464,6 +475,7 @@ namespace Nomad.EditorUtilities
 
             using var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition);
             _historyScrollPosition = scrollView.scrollPosition;
+            _drawnItems.Clear();
             foreach (var context in _historyContexts)
             {
                 var isActive = context.IsActive;
@@ -478,7 +490,6 @@ namespace Nomad.EditorUtilities
             }
 
             DrawContext(_projectContext, true);
-            
         }
 
         private void DrawPinned()
@@ -486,13 +497,15 @@ namespace Nomad.EditorUtilities
             var cacheGuiColor = GUI.color;
             _isWindowFocused = focusedWindow == this;
 
+            _drawnItems.Clear();
+
             using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
             {
                 EditorGUILayout.LabelField("Current Selection", GUILayout.Width(110));
 
                 if (_selectedItem is not null)
                 {
-                    DrawItem(_selectedItem, cacheGuiColor);
+                    DrawItem(_selectedItem, cacheGuiColor, includeInSequence: false);
                 }
                 else
                 {
@@ -503,8 +516,6 @@ namespace Nomad.EditorUtilities
             using (var scrollView = new EditorGUILayout.ScrollViewScope(_pinnedScrollPosition))
             {
                 _pinnedScrollPosition = scrollView.scrollPosition;
-                
-                
 
                 // Draw the selected item separately if it is not in the pinned list.
                 // _animShowPinnedStagingArea.target = (_selectedItem is not null && !_selectedItem.IsPinned);
@@ -529,21 +540,21 @@ namespace Nomad.EditorUtilities
 
 
                 if (toggle("Include Folders",
-                        "If true, folders may be included in history.",
+                        "If enabled, folders may be included in history.",
                         ref _recordFolders))
                 {
                     EditorPrefs.SetBool(PrefKey_RecordFolders, _recordFolders);
                 }
 
                 if (toggle("Include Prefabs",
-                        "If true, prefab edit mode may be included in history.",
+                        "If enabled, prefab edit mode may be included in history.",
                         ref _recordPrefabStageObjects))
                 {
                     EditorPrefs.SetBool(PrefKey_RecordPrefabs, _recordPrefabStageObjects);
                 }
 
                 if (toggle("Show Invalid Contexts",
-                        "If true, recent scenes and prefabs are still shown while unopened.",
+                        "If enabled, recent scenes and prefabs are still shown while unopened.",
                         ref _showInvalidContexts))
                 {
                     EditorPrefs.SetBool(PrefKey_ShowInvalidContexts, _showInvalidContexts);
@@ -615,7 +626,7 @@ namespace Nomad.EditorUtilities
                 ContextType.Prefab => new GUIContent(context.PrefabAsset.name, _prefabIcon),
                 _ => throw new ArgumentOutOfRangeException()
             };
-            
+
             using (verticalScope)
             {
                 if (GUILayout.Button(
@@ -640,18 +651,28 @@ namespace Nomad.EditorUtilities
             }
         }
 
-        private void DrawItem(SelectionItem item, Color cacheGuiColor, GUIStyle style = null)
+        private void DrawItem(SelectionItem item, Color cacheGuiColor, GUIStyle style = null, bool includeInSequence = true)
         {
             if (item is null) return;
             var obj = item.Object;
             if (obj == null)
             {
                 if (item.Data.ContextType is ContextType.Prefab)
-                    EditorGUILayout.LabelField(item.Data.ObjectPath + " " + item.Data.ContextGuid);
+                {
+                    using (new EditorGUI.DisabledScope(true))
+                        EditorGUILayout.LabelField(item.Data.ObjectPath + " " + item.Data.ContextGuid);
+                }
+
                 return;
             }
 
             using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
+
+            // Assign index
+            if (includeInSequence)
+            {
+                _drawnItems.Add(item);
+            }
 
             // Highlight active object.
             if (obj == Selection.activeObject)
@@ -956,12 +977,12 @@ namespace Nomad.EditorUtilities
                     case ContextType.Invalid:
                         Debug.LogError("SelectionItem context is invalid.");
                         break;
-                    
+
                     case ContextType.Project:
                         Object = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(data.ObjectGuid));
                         Context = new SelectionContext(null);
                         break;
-                    
+
                     case ContextType.Scene:
                         var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         Context = new SelectionContext(sceneAsset);
@@ -969,8 +990,9 @@ namespace Nomad.EditorUtilities
                         {
                             Object = GameObject.Find(data.ObjectPath);
                         }
+
                         break;
-                        
+
                     case ContextType.Prefab:
                         var prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(data.ContextGuid));
                         Context = new SelectionContext(prefabAsset);
@@ -978,6 +1000,7 @@ namespace Nomad.EditorUtilities
                         {
                             Object = GameObject.Find(data.ObjectPath);
                         }
+
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
