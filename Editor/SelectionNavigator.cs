@@ -344,6 +344,9 @@ namespace Nomad.EditorUtilities
         {
             if (Event.current.type == EventType.KeyDown)
             {
+                if (Event.current.control)
+                    return;
+                
                 switch (Event.current.keyCode)
                 {
                     case KeyCode.UpArrow:
@@ -398,6 +401,14 @@ namespace Nomad.EditorUtilities
                         _tabBar.Step(Event.current.shift ? -1 : 1);
                         Event.current.Use();
                         break;
+                    case KeyCode.RightArrow:
+                        _tabBar.Step(1);
+                        Event.current.Use();
+                        break;
+                    case KeyCode.LeftArrow:
+                        _tabBar.Step(-1);
+                        Event.current.Use();
+                        break;
 
                     case KeyCode.Alpha1:
                         _queuedTab = Tab.History;
@@ -413,29 +424,16 @@ namespace Nomad.EditorUtilities
                         _queuedTab = Tab.Settings;
                         Event.current.Use();
                         break;
-                    // case KeyCode.RightArrow:
-                    //     _tabBar.Step(1);
-                    //     break;
-                    // case KeyCode.LeftAlt:
-                    //     _tabBar.Step(-1);
-                    //     break;
+                    
                     // TODO: focus selection
                 }
             }
         }
 
-        // TODO: overhaul to work with context groups
         private void SelectNext(int steps)
         {
-            // var items = _currentTab switch
-            // {
-            //     Tab.History => _allHistoryItems,
-            //     Tab.Pinned => _allHistoryItems.Where(x => x.IsPinned).ToList(),
-            //     _ => null
-            // };
             var items = _drawnItems;
-
-            if (items is null || !items.Any()) return;
+            if (items is null || items.Count == 0) return;
 
             var index = 0;
             for (var i = 0; i < items.Count; i++)
@@ -1059,6 +1057,9 @@ namespace Nomad.EditorUtilities
 
             internal void OnClick()
             {
+                if (_selectedItem != this)
+                    SetSelection(this);
+                
                 var clickTime = EditorApplication.timeSinceStartup;
                 if (clickTime - _lastClickTime < DoubleClickMaxDuration)
                 {
@@ -1067,9 +1068,11 @@ namespace Nomad.EditorUtilities
                     {
                         EditorUtility.FocusProjectWindow();
                     }
+                    else
+                    {
+                        SceneView.lastActiveSceneView.FrameSelected();
+                    }
                 }
-
-                SetSelection(this);
 
                 _lastClickTime = clickTime;
             }
