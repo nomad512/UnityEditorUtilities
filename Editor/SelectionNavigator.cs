@@ -50,6 +50,10 @@ namespace Nomad.EditorUtilities
         private Vector2 _historyScrollPosition;
         private Vector2 _pinnedScrollPosition;
         private Vector2 _settingsScrollPosition;
+        private bool _shouldScrollToSelection;
+        private Vector2 _activeScrollPosition;
+        private float _activeWindowHeight;
+        private float _adjustScrollY;
 
         private enum Tab
         {
@@ -259,17 +263,31 @@ namespace Nomad.EditorUtilities
             EditorGUIUtility.PingObject(obj);
             UpdatedHistory?.Invoke();
         }
+        
+        private static void SetSelection(SelectionItem item)
+        {
+            if (!item.Object)
+            {
+                Debug.LogError("Can't select SelectableItem because its object is null.");
+                return;
+            }
+            _skipNextSelection = true;
+            _selectedItem = item;
+            Selection.activeObject = item.Object;
+            EditorGUIUtility.PingObject(item.Object);
+            UpdatedHistory?.Invoke();
+        }
 
         #endregion
 
         #region Editor Window
 
-        /// Called when the selection changes, for each instance of the window. 
-        // private void OnSelectionChange() => Repaint();
-        // TODO: adjust scroll position when changing selection
-
         // Called when an edit is made to the history.
-        private void OnUpdatedHistory() => Repaint();
+        private void OnUpdatedHistory()
+        {
+            _shouldScrollToSelection = true;
+            Repaint();
+        }
 
         private void OnEnable()
         {
@@ -318,6 +336,8 @@ namespace Nomad.EditorUtilities
             _currentTab = (Tab)_tabBar.Draw();
 
             UpdateKeys();
+
+            // _shouldScrollToSelection = false;
         }
 
         private void UpdateKeys()
@@ -425,10 +445,8 @@ namespace Nomad.EditorUtilities
                 index = Mathf.Clamp(index, 0, items.Count - 1);
                 break;
             }
-
-            var obj = items[index].Object;
-            if (obj != null)
-                SetSelection(obj);
+            
+            SetSelection(items[index]);
         }
 
         private void Sanitize()
@@ -476,6 +494,8 @@ namespace Nomad.EditorUtilities
             using var scrollView = new EditorGUILayout.ScrollViewScope(_historyScrollPosition);
             _historyScrollPosition = scrollView.scrollPosition;
             _drawnItems.Clear();
+            _activeScrollPosition = _historyScrollPosition;
+            _activeWindowHeight = position.height;
             foreach (var context in _historyContexts)
             {
                 var isActive = context.IsActive;
@@ -490,6 +510,15 @@ namespace Nomad.EditorUtilities
             }
 
             DrawContext(_projectContext, true);
+
+            // TODO: adjust scroll when changing tabs
+            if (_adjustScrollY != 0 && _shouldScrollToSelection)
+            {
+                _historyScrollPosition.y += _adjustScrollY;
+                _adjustScrollY = 0;
+                _shouldScrollToSelection = false;
+                Repaint();
+            }
         }
 
         private void DrawPinned()
@@ -666,16 +695,37 @@ namespace Nomad.EditorUtilities
                 return;
             }
 
+            var isSelected = item == _selectedItem;
+
             using var row = style is null ? new EditorGUILayout.HorizontalScope() : new EditorGUILayout.HorizontalScope(style);
 
             // Assign index
             if (includeInSequence)
             {
                 _drawnItems.Add(item);
+                if (isSelected)
+                {
+                    if (row.rect.y > 0)
+                    {
+                        if (row.rect.y < _activeScrollPosition.y)
+                        {
+                            _adjustScrollY = row.rect.y - _activeScrollPosition.y;
+                        }
+                        else
+                        {
+                            const float offset = 32 + 20;
+                            var delta = row.rect.y - _activeWindowHeight - _activeScrollPosition.y + offset;
+                            if (delta > 0)
+                            {
+                                _adjustScrollY = delta;
+                            }
+                        }
+                    }
+                }
             }
 
             // Highlight active object.
-            if (obj == Selection.activeObject)
+            if (isSelected)
             {
                 EditorGUI.DrawRect(row.rect, _isWindowFocused ? _activeHighlightColor : _inactiveHighlightColor);
             }
@@ -931,7 +981,7 @@ namespace Nomad.EditorUtilities
                     }
                 }
 
-                SetSelection(obj);
+                SetSelection(obj); // TODO: utilize SelectableItem to represent the context item.
 
                 _lastClickTime = clickTime;
             }
@@ -1019,7 +1069,7 @@ namespace Nomad.EditorUtilities
                     }
                 }
 
-                SetSelection(Object);
+                SetSelection(this);
 
                 _lastClickTime = clickTime;
             }
