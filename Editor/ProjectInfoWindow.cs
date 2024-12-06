@@ -98,7 +98,7 @@ namespace Nomad.EditorUtilities
 			new ProjectAction()
 			{
 				Label = "Selection Navigator",
-				Action = () => SelectionNavigator.ShowWindow(),
+				Action = () => SelectionNavigator.Window.ShowWindow(),
 				CanExecute = () => { return true; },
 				Tooltip = "Open the Project Navigator window.",
 				Hotkey = KeyCode.S,
