@@ -12,7 +12,7 @@ namespace Nomad.EditorUtilities
             // EditorWindow Instance State
             private readonly Color _activeHighlightColor = new(44f / 255f, 93f / 255f, 135f / 255f, 1f);
             private readonly Color _inactiveHighlightColor = new(77f / 255f, 77f / 255f, 77f / 255f, 1f);
-            private readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.MaxHeight(18);
+            private readonly GUILayoutOption _guiMaxHeightSingleLine = GUILayout.Height(18); // TODO: file bug report for Unity 6 where GUILayout.MaxHeight(18) does not work here.
             private Texture _sceneIcon;
             private Texture _prefabIcon;
             private Vector2 _historyScrollPosition;
