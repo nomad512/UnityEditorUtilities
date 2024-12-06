@@ -98,6 +98,7 @@ namespace Nomad.EditorUtilities
         /// <p>Called when the active selection changed, whether an instance of the window exists or not.</p>
         private static void RecordSelection()
         {
+            if (EditorApplication.isCompiling) return;
             if (Selection.activeObject == null)
             {
                 _selectedItem = null;
@@ -190,7 +191,6 @@ namespace Nomad.EditorUtilities
             }
         }
 
-        // Records the item to history. 
         private static void RecordItem(SelectionItem item)
         {
             switch (item.Context.Type)
