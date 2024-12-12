@@ -19,6 +19,7 @@ namespace Nomad.EditorUtilities
         private const string PrefKey_RecordScenes = "Nomad_EditorUtilities_Selection_RecordScenes";
         private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
         private const string PrefKey_ShowInvalidContexts = "Nomad_EditorUtilities_Selection_ShowInvalidContexts";
+        private const string PrefKey_VerboseLogs = "Nomad_EditorUtilities_Selection_VerboseLogs";
         private const float DoubleClickMaxDuration = 0.5f;
 
         // TODO: disable all history recording until the window is opened for the first time.
@@ -42,6 +43,7 @@ namespace Nomad.EditorUtilities
         private static bool _recordPrefabStageObjects;
         private static bool _recordSceneObjects;
         private static bool _showInvalidContexts;
+        private static bool _verboseLogs;
 
         [InitializeOnLoadMethod]
         internal static void Initialize()
@@ -61,7 +63,7 @@ namespace Nomad.EditorUtilities
             EditorSceneManager.sceneOpened += (_, _) => GetCurrentSceneContexts();
             EditorSceneManager.sceneClosed += (_) => GetCurrentSceneContexts();
 
-            // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
+            Log($"[{nameof(SelectionNavigator)}] Initialized.");
         }
 
 
@@ -133,8 +135,11 @@ namespace Nomad.EditorUtilities
             if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return; // Ignore prefab members.
             if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return; // Ignore scene members.
 
+            var triedTrimHistory = false; // For debugging
             while (_allHistoryItems.Count >= _historyMaxSize)
             {
+                triedTrimHistory = true;
+                Log($"History exceeds max size ({_allHistoryItems.Count}/{_historyMaxSize})");
                 for (var i = _allHistoryItems.Count - 1; i >= 0; i--)
                 {
                     // Limit size, but don't remove Pinned items.
@@ -147,6 +152,11 @@ namespace Nomad.EditorUtilities
                     RemoveItem(i);
                     break;
                 }
+            }
+
+            if (triedTrimHistory)
+            {
+                Log("Successfully trimmed history");
             }
 
             if (!alreadyRecorded && _allHistoryItems.Count < _historyMaxSize)
@@ -255,6 +265,12 @@ namespace Nomad.EditorUtilities
             UpdatedHistory?.Invoke();
         }
 
+        private static void Log(string message)
+        {
+            if (!_verboseLogs) return;
+            Debug.Log($"[{nameof(SelectionNavigator)}] {message}."); 
+        }
+
         #endregion
 
         #region Save/Load
@@ -302,6 +318,7 @@ namespace Nomad.EditorUtilities
             _recordPrefabStageObjects = EditorPrefs.GetBool(PrefKey_RecordPrefabs, false);
             _recordSceneObjects = EditorPrefs.GetBool(PrefKey_RecordScenes, true);
             _showInvalidContexts = EditorPrefs.GetBool(PrefKey_ShowInvalidContexts, true);
+            _verboseLogs = EditorPrefs.GetBool(PrefKey_VerboseLogs, true);
         }
 
         private static void DeletePreferences()

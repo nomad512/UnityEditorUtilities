@@ -324,24 +324,31 @@ namespace Nomad.EditorUtilities
                     }
 
                     if (toggle("Include Scenes",
-                            "While enabled, objects in scenes may be recorded in history.",
+                            "Objects in scenes may be recorded in history.",
                             ref _recordSceneObjects))
                     {
                         EditorPrefs.SetBool(PrefKey_RecordScenes, _recordSceneObjects);
                     }
 
                     if (toggle("Include Prefabs",
-                            "While enabled, prefab edit mode may be recorded in history.",
+                            "Prefab edit mode may be recorded in history.",
                             ref _recordPrefabStageObjects))
                     {
                         EditorPrefs.SetBool(PrefKey_RecordPrefabs, _recordPrefabStageObjects);
                     }
 
                     if (toggle("Show Invalid Contexts",
-                            "While enabled, recent scenes and prefabs are still shown while unopened.",
+                            "Recent scenes and prefabs are still shown while unopened.",
                             ref _showInvalidContexts))
                     {
                         EditorPrefs.SetBool(PrefKey_ShowInvalidContexts, _showInvalidContexts);
+                    }
+
+                    if (toggle("Verbose Logs",
+                            "Print detailed debug messages.",
+                            ref _verboseLogs))
+                    {
+                        EditorPrefs.SetBool(PrefKey_VerboseLogs, _verboseLogs);
                     }
 
 
