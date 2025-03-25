@@ -1,21 +1,22 @@
+using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.IO;
+using UnityEngine;
+using UnityEditor;
+using Object = UnityEngine.Object;
+
 namespace Nomad.EditorUtilities
 {
-	using System;
-	using System.Linq;
-	using System.Collections.Generic;
-	using UnityEngine;
-	using UnityEditor;
-	using Object = UnityEngine.Object;
-
 	internal class HierarchyAnalyzer : EditorWindow
 	{
-		private static List<Component> _componentBuffer = new();
+		private static readonly List<Component> _componentBuffer = new();
 		
 		private int _tabIndex;
 		private delegate bool FilterHandler(GameObject gameObject);
 		private delegate void AnalyzeHandler(GameObject gameObject);
 
-		private Tab[] _tabs = {
+		private readonly Tab[] _tabs = {
 			new ComponentManifest(),
 			new MissingComponentsTab()
 		};
@@ -59,7 +60,7 @@ namespace Nomad.EditorUtilities
 		{
 			internal override string Name => "Missing Components";
 
-			private List<GameObject> _gameObjectsWithMissingComponents = new List<GameObject>();
+			private List<GameObject> _gameObjectsWithMissingComponents = new();
 			private Vector2 _scrollPosition;
 			private bool _didSearch;
 
@@ -74,7 +75,7 @@ namespace Nomad.EditorUtilities
 						_gameObjectsWithMissingComponents.Clear();
 						foreach (var go in Selection.gameObjects)
 						{
-							FindMissingInTransform(go.transform, ref _gameObjectsWithMissingComponents);
+							FindMissingInChildren(go.transform, ref _gameObjectsWithMissingComponents);
 						}
 						_didSearch = true;
 					}
@@ -82,7 +83,7 @@ namespace Nomad.EditorUtilities
 					if (GUILayout.Button("Find in Scene"))
 					{
 						_gameObjectsWithMissingComponents.Clear();
-						var gameObjects = FindObjectsOfType<GameObject>();
+						var gameObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 						foreach (var gameObject in gameObjects)
 						{
 							FindMissingOnGameObject(gameObject, ref _gameObjectsWithMissingComponents);
@@ -103,7 +104,8 @@ namespace Nomad.EditorUtilities
 					{
 						GUILayout.Label("0 missing Components found.");
 					}
-					_gameObjectsWithMissingComponents = _gameObjectsWithMissingComponents.Where(x => x != null).ToList();
+					
+					// _gameObjectsWithMissingComponents = _gameObjectsWithMissingComponents.Where(x => x != null).ToList();
 					foreach (var go in _gameObjectsWithMissingComponents)
 					{
 						if (GUILayout.Button(go.name))
@@ -112,6 +114,24 @@ namespace Nomad.EditorUtilities
 						}
 					}
 					GUILayout.Space(5);
+					
+					if (_didSearch && _gameObjectsWithMissingComponents.Count > 0)
+					{
+						GUI.color = Color.Lerp(Color.white, Color.red, 0.8f);
+						if (GUILayout.Button("Remove Missing Components"))
+						{
+							foreach (var go in _gameObjectsWithMissingComponents)
+							{
+								GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
+							}
+
+							_gameObjectsWithMissingComponents.Clear();
+							_didSearch = false;
+						}
+
+						GUI.color = Color.white;
+						GUILayout.Space(5);
+					}
 				}
 				EditorGUILayout.EndScrollView();
 			}
@@ -121,7 +141,7 @@ namespace Nomad.EditorUtilities
 		{
 			internal override string Name => "Component Manifest";
 
-			private Dictionary<Type, List<Component>> _results = new Dictionary<Type, List<Component>>();
+			private Dictionary<Type, List<Component>> _results = new();
 
 			private Vector2 _scrollPosition;
 			private SortMode _sortMode;
@@ -309,12 +329,13 @@ namespace Nomad.EditorUtilities
 		}
 
 
-		private static void FindMissingInTransform(Transform transform, ref List<GameObject> gameObjectsWithMissingComponents)
+		/// Searches for missing Components in this transform and children, recursively.  
+		private static void FindMissingInChildren(Transform root, ref List<GameObject> gameObjectsWithMissingComponents)
 		{
-			FindMissingOnGameObject(transform.gameObject, ref gameObjectsWithMissingComponents);
-			foreach (Transform child in transform)
+			FindMissingOnGameObject(root.gameObject, ref gameObjectsWithMissingComponents);
+			foreach (Transform child in root)
 			{
-				FindMissingInTransform(child, ref gameObjectsWithMissingComponents);
+				FindMissingInChildren(child, ref gameObjectsWithMissingComponents);
 			}
 		}
 
