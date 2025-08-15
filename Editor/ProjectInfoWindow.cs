@@ -9,7 +9,7 @@ namespace Nomad.EditorUtilities
 	using UnityEditor;
 
 	// TODO: OpenCmd for MacOS
-	// TODO: OpenExploerer for MacOS	
+	// TODO: OpenExplorer for MacOS	
 	// TODO: OpenEditorLog for MacOS
 
 	/// <summary>
