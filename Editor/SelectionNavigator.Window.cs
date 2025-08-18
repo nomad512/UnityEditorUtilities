@@ -331,10 +331,10 @@ namespace Nomad.EditorUtilities
                     {
                         var historySize = EditorGUILayout.IntField(new GUIContent("History Size",
                                 "The max number of items recorded in history."),
-                            _historyMaxSize);
-                        if (historySize != _historyMaxSize)
+                            _historySizeMax);
+                        if (historySize != _historySizeMax)
                         {
-                            _historyMaxSize = historySize;
+                            _historySizeMax = historySize;
                             EditorPrefs.SetInt(PrefKey_HistorySize, historySize);
                         }
                     }

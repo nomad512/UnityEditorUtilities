@@ -24,6 +24,7 @@ namespace Nomad.EditorUtilities
         private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
         private const string PrefKey_ShowInvalidContexts = "Nomad_EditorUtilities_Selection_ShowInvalidContexts";
         private const float DoubleClickMaxDuration = 0.5f;
+        private const int HistorySizeDefault = 32;
 
         private static event Action UpdatedHistory;
         private static SelectionItem _selectedItem;
@@ -36,7 +37,7 @@ namespace Nomad.EditorUtilities
         private static bool _skipNextSelection;
 
         // User Settings -- Loaded from EditorPrefs via LoadPreferences()
-        private static int _historyMaxSize;
+        private static int _historySizeMax = HistorySizeDefault;
         private static bool _recordFolders;
         private static bool _recordPrefabStageObjects;
         private static bool _recordSceneObjects;
@@ -45,8 +46,8 @@ namespace Nomad.EditorUtilities
         [InitializeOnLoadMethod]
         internal static void Initialize()
         {
-            _allHistoryItems = new List<SelectionItem>(_historyMaxSize);
-            _drawnItems = new List<SelectionItem>(_historyMaxSize);
+            _allHistoryItems = new List<SelectionItem>(_historySizeMax);
+            _drawnItems = new List<SelectionItem>(_historySizeMax);
             _historyContexts = new List<SelectionContext>();
             _currentPrefabGuid = string.Empty;
             _currentSceneGuids = new List<string>();
@@ -138,14 +139,14 @@ namespace Nomad.EditorUtilities
             if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return; // Ignore prefab members.
             if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return; // Ignore scene members.
 
-            while (_allHistoryItems.Count >= _historyMaxSize)
+            while (_allHistoryItems.Count >= _historySizeMax)
             {
                 for (var i = _allHistoryItems.Count - 1; i >= 0; i--)
                 {
                     // Limit size, but don't remove Starred items.
                     if (_allHistoryItems[i].IsStarred)
                     {
-                        if (i == 0 && _allHistoryItems.Count >= _historyMaxSize) return; // Cancel if all items are starred.
+                        if (i == 0 && _allHistoryItems.Count >= _historySizeMax) return; // Cancel if all items are starred.
                         continue;
                     }
 
@@ -154,7 +155,7 @@ namespace Nomad.EditorUtilities
                 }
             }
 
-            if (!alreadyRecorded && _allHistoryItems.Count < _historyMaxSize)
+            if (!alreadyRecorded && _allHistoryItems.Count < _historySizeMax)
             {
                 RecordItem(item);
             }
@@ -326,7 +327,13 @@ namespace Nomad.EditorUtilities
 
         private static void LoadPreferences()
         {
-            _historyMaxSize = EditorPrefs.GetInt(PrefKey_HistorySize, 32);
+            _historySizeMax = EditorPrefs.GetInt(PrefKey_HistorySize, _historySizeMax);
+            if (_historySizeMax <= 0)
+            {
+                _historySizeMax = 32;
+                Debug.LogError($"Max history size must be greater than zero. Resetting to default. ({HistorySizeDefault})");
+                EditorPrefs.DeleteKey(PrefKey_HistorySize);
+            }
             _recordFolders = EditorPrefs.GetBool(PrefKey_RecordFolders, true);
             _recordPrefabStageObjects = EditorPrefs.GetBool(PrefKey_RecordPrefabs, false);
             _recordSceneObjects = EditorPrefs.GetBool(PrefKey_RecordScenes, true);
