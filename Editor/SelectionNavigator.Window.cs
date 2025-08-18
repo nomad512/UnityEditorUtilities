@@ -93,6 +93,26 @@ namespace Nomad.EditorUtilities
                 UpdateKeys();
 
                 // _shouldScrollToSelection = false;
+                
+                var eventType = Event.current.type;
+                if (eventType == EventType.DragUpdated || eventType == EventType.DragPerform){
+                    DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+       
+                    if (eventType == EventType.DragPerform)
+                    {
+                        DragAndDrop.AcceptDrag();
+                        foreach (var obj in DragAndDrop.objectReferences)
+                        {
+                            if (!obj) continue;
+                            var added = RecordObject(obj);
+                            if (added != null)
+                            {
+                                added.IsStarred = true;
+                            }
+                        }
+                    }
+                    Event.current.Use();
+                }
             }
 
             // Called when an edit is made to the history.
@@ -111,23 +131,36 @@ namespace Nomad.EditorUtilities
 
                     switch (Event.current.keyCode)
                     {
-                        case KeyCode.UpArrow:
+                        case KeyCode.UpArrow when _currentTab is Tab.History or Tab.Favorites:
                             SelectNextInWindow(-1);
                             Event.current.Use();
                             break;
-                        case KeyCode.DownArrow:
+                        case KeyCode.DownArrow when _currentTab is Tab.History or Tab.Favorites:
                             SelectNextInWindow(1);
                             Event.current.Use();
                             break;
 
-                        case KeyCode.P:
-                        {
+                        case KeyCode.F when _currentTab is Tab.History:
                             if (_selectedItem is null) break;
                             _selectedItem.IsStarred = !_selectedItem.IsStarred;
                             Repaint();
                             Event.current.Use();
                             break;
-                        }
+                        
+                        case KeyCode.Delete when _currentTab is Tab.History:
+                            if (_selectedItem is null) break;
+                            var toDelete = _selectedItem;
+                            if (_drawnItems.Count > 0 && _drawnItems[^1] == toDelete)
+                            {
+                                SelectNextInWindow(-1);
+                            }
+                            else
+                            {
+                                SelectNextInWindow(1);
+                            }
+                            RemoveItem(toDelete);
+                            Repaint();
+                            break;
 
                         case KeyCode.Space:
                             var sb = new StringBuilder();

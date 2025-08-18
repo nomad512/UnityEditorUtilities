@@ -102,17 +102,17 @@ namespace Nomad.EditorUtilities
             RecordObject(Selection.activeObject);
         }
         
-        private static void RecordObject(Object obj)
+        private static SelectionItem RecordObject(Object obj)
         {
-            if (EditorApplication.isCompiling) return;
+            if (EditorApplication.isCompiling) return null;
             if (obj == null)
             {
                 _selectedItem = null;
                 UpdatedHistory?.Invoke();
-                return;
+                return null;
             }
 
-            if (!_recordFolders && obj is DefaultAsset) return; // Ignore folders.
+            if (!_recordFolders && obj is DefaultAsset) return null; // Ignore folders.
 
             var item = default(SelectionItem);
             var alreadyRecorded = false;
@@ -133,11 +133,11 @@ namespace Nomad.EditorUtilities
             if (_skipNextSelection)
             {
                 _skipNextSelection = false; // This flag is used to avoid modifying history while changing selection via this tool.
-                return;
+                return null;
             }
 
-            if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return; // Ignore prefab members.
-            if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return; // Ignore scene members.
+            if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return null; // Ignore prefab members.
+            if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return null; // Ignore scene members.
 
             while (_allHistoryItems.Count >= _historySizeMax)
             {
@@ -146,7 +146,7 @@ namespace Nomad.EditorUtilities
                     // Limit size, but don't remove Starred items.
                     if (_allHistoryItems[i].IsStarred)
                     {
-                        if (i == 0 && _allHistoryItems.Count >= _historySizeMax) return; // Cancel if all items are starred.
+                        if (i == 0 && _allHistoryItems.Count >= _historySizeMax) return null; // Cancel if all items are starred.
                         continue;
                     }
 
@@ -161,6 +161,7 @@ namespace Nomad.EditorUtilities
             }
 
             UpdatedHistory?.Invoke();
+            return item;
         }
 
         private static SelectionContext GetContext(SelectionItem item, out bool isRecorded)
@@ -236,6 +237,20 @@ namespace Nomad.EditorUtilities
             {
                 context.Items.Remove(item);
             }
+        }
+
+        private static bool RemoveItem(SelectionItem item)
+        {
+            for (var i = 0; i < _allHistoryItems.Count; i++)
+            {
+                if (_allHistoryItems[i] == item)
+                {
+                    RemoveItem(i);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void SetSelection(Object obj)
