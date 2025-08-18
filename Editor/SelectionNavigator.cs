@@ -10,6 +10,10 @@ using Object = UnityEngine.Object;
 
 namespace Nomad.EditorUtilities
 {
+    // TODO: disable all history recording until the window is opened for the first time.
+    // TODO: add ability to toggle on/off all history recording in settings. Show a warning in the history list when recording is disabled.
+    // TODO: "blacklist" functionality: remove an item from history and don't show it again.
+    // TODO: fix bug: prefab context not finding Objects
     internal partial class SelectionNavigator : EditorWindow
     {
         private const string PrefKey_Tab = "Nomad_EditorUtilities_Selection_Tab";
@@ -19,13 +23,8 @@ namespace Nomad.EditorUtilities
         private const string PrefKey_RecordScenes = "Nomad_EditorUtilities_Selection_RecordScenes";
         private const string PrefKey_HistorySize = "Nomad_EditorUtilities_Selection_HistorySize";
         private const string PrefKey_ShowInvalidContexts = "Nomad_EditorUtilities_Selection_ShowInvalidContexts";
-        private const string PrefKey_VerboseLogs = "Nomad_EditorUtilities_Selection_VerboseLogs";
         private const float DoubleClickMaxDuration = 0.5f;
-
-        // TODO: disable all history recording until the window is opened for the first time.
-        // TODO: add ability to toggle on/off all history recording in settings. Show a warning in the history list when recording is disabled.
-        // TODO: "blacklist" functionality: remove an item from history and don't show it again.
-        // TODO: prefab context not finding Objects
+        private const int HistorySizeDefault = 32;
 
         private static event Action UpdatedHistory;
         private static SelectionItem _selectedItem;
@@ -38,18 +37,17 @@ namespace Nomad.EditorUtilities
         private static bool _skipNextSelection;
 
         // User Settings -- Loaded from EditorPrefs via LoadPreferences()
-        private static int _historyMaxSize;
+        private static int _historySizeMax = HistorySizeDefault;
         private static bool _recordFolders;
         private static bool _recordPrefabStageObjects;
         private static bool _recordSceneObjects;
         private static bool _showInvalidContexts;
-        private static bool _verboseLogs;
 
         [InitializeOnLoadMethod]
         internal static void Initialize()
         {
-            _allHistoryItems = new List<SelectionItem>(_historyMaxSize);
-            _drawnItems = new List<SelectionItem>(_historyMaxSize);
+            _allHistoryItems = new List<SelectionItem>(_historySizeMax);
+            _drawnItems = new List<SelectionItem>(_historySizeMax);
             _historyContexts = new List<SelectionContext>();
             _currentPrefabGuid = string.Empty;
             _currentSceneGuids = new List<string>();
@@ -57,19 +55,19 @@ namespace Nomad.EditorUtilities
 
             // TODO: any prior error in this function will cause event subscriptions to fail
             Selection.selectionChanged += RecordSelection;
-            PrefabStage.prefabStageOpened += (_) => GetCurrentPrefabContext();
-            PrefabStage.prefabStageClosing += (_) => GetCurrentPrefabContext();
-            SceneManager.activeSceneChanged += (_, _) => GetCurrentSceneContexts();
-            EditorSceneManager.sceneOpened += (_, _) => GetCurrentSceneContexts();
-            EditorSceneManager.sceneClosed += (_) => GetCurrentSceneContexts();
+            PrefabStage.prefabStageOpened += (_) => RefreshCurrentPrefabContext();
+            PrefabStage.prefabStageClosing += (_) => RefreshCurrentPrefabContext();
+            SceneManager.activeSceneChanged += (_, _) => RefreshCurrentSceneContexts();
+            EditorSceneManager.sceneOpened += (_, _) => RefreshCurrentSceneContexts();
+            EditorSceneManager.sceneClosed += (_) => RefreshCurrentSceneContexts();
 
-            Log($"[{nameof(SelectionNavigator)}] Initialized.");
+            // Debug.Log($"[{nameof(SelectionNavigator)}] Initialized."); // TODO: enable via user configuration option
         }
 
 
         #region Core
 
-        private static void GetCurrentPrefabContext()
+        private static void RefreshCurrentPrefabContext()
         {
             var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             if (prefabStage)
@@ -84,7 +82,7 @@ namespace Nomad.EditorUtilities
             UpdatedHistory?.Invoke();
         }
 
-        private static void GetCurrentSceneContexts()
+        private static void RefreshCurrentSceneContexts()
         {
             _currentSceneGuids.Clear();
             for (var i = 0; i < SceneManager.sceneCount; i++)
@@ -98,24 +96,30 @@ namespace Nomad.EditorUtilities
 
         /// Analyzes the current active selection and records to history if applicable.
         /// <p>Called when the active selection changed, whether an instance of the window exists or not.</p>
+        // TODO: RecordSelection seems not to fire when clicking an item in Hierarchy tab when the tab was not already focused.  
         private static void RecordSelection()
         {
-            if (EditorApplication.isCompiling) return;
-            if (Selection.activeObject == null)
+            RecordObject(Selection.activeObject);
+        }
+        
+        private static SelectionItem RecordObject(Object obj)
+        {
+            if (EditorApplication.isCompiling) return null;
+            if (obj == null)
             {
                 _selectedItem = null;
                 UpdatedHistory?.Invoke();
-                return;
+                return null;
             }
 
-            if (!_recordFolders && Selection.activeObject is DefaultAsset) return; // Ignore folders.
+            if (!_recordFolders && obj is DefaultAsset) return null; // Ignore folders.
 
             var item = default(SelectionItem);
             var alreadyRecorded = false;
 
             for (var i = _allHistoryItems.Count - 1; i >= 0; i--)
             {
-                if (_allHistoryItems[i].Object == Selection.activeObject)
+                if (_allHistoryItems[i].Object == obj)
                 {
                     item = _allHistoryItems[i];
                     alreadyRecorded = true;
@@ -123,29 +127,26 @@ namespace Nomad.EditorUtilities
                 }
             }
 
-            item ??= new SelectionItem(new SerializableSelectionData(Selection.activeObject));
+            item ??= new SelectionItem(new SerializableSelectionData(obj));
             _selectedItem = item;
 
             if (_skipNextSelection)
             {
                 _skipNextSelection = false; // This flag is used to avoid modifying history while changing selection via this tool.
-                return;
+                return null;
             }
 
-            if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return; // Ignore prefab members.
-            if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return; // Ignore scene members.
+            if (!_recordPrefabStageObjects && item.Data.ContextType is ContextType.Prefab) return null; // Ignore prefab members.
+            if (!_recordSceneObjects && item.Data.ContextType is ContextType.Scene) return null; // Ignore scene members.
 
-            var triedTrimHistory = false; // For debugging
-            while (_allHistoryItems.Count >= _historyMaxSize)
+            while (_allHistoryItems.Count >= _historySizeMax)
             {
-                triedTrimHistory = true;
-                Log($"History exceeds max size ({_allHistoryItems.Count}/{_historyMaxSize})");
                 for (var i = _allHistoryItems.Count - 1; i >= 0; i--)
                 {
-                    // Limit size, but don't remove Pinned items.
-                    if (_allHistoryItems[i].IsPinned)
+                    // Limit size, but don't remove Starred items.
+                    if (_allHistoryItems[i].IsStarred)
                     {
-                        if (i == 0 && _allHistoryItems.Count >= _historyMaxSize) return; // Cancel if all items are pinned.
+                        if (i == 0 && _allHistoryItems.Count >= _historySizeMax) return null; // Cancel if all items are starred.
                         continue;
                     }
 
@@ -154,19 +155,14 @@ namespace Nomad.EditorUtilities
                 }
             }
 
-            if (triedTrimHistory)
-            {
-                Log("Successfully trimmed history");
-            }
-
-            if (!alreadyRecorded && _allHistoryItems.Count < _historyMaxSize)
+            if (!alreadyRecorded && _allHistoryItems.Count < _historySizeMax)
             {
                 RecordItem(item);
             }
 
             UpdatedHistory?.Invoke();
+            return item;
         }
-        // TODO: RecordSelection seems not to fire when clicking an item in Hierarchy tab when the tab was not already focused.  
 
         private static SelectionContext GetContext(SelectionItem item, out bool isRecorded)
         {
@@ -217,7 +213,7 @@ namespace Nomad.EditorUtilities
                 case ContextType.Scene:
                 case ContextType.Prefab:
                     var context = GetContext(item, out var isContextRecorded);
-                    if (context.Items.Any(x => x.Data.ObjectPath == item.Data.ObjectPath))
+                    if (context.Items.Any(other => other.Data.ObjectPath == item.Data.ObjectPath))
                         return; // Skip duplicate
                     if (!isContextRecorded)
                     {
@@ -243,6 +239,20 @@ namespace Nomad.EditorUtilities
             }
         }
 
+        private static bool RemoveItem(SelectionItem item)
+        {
+            for (var i = 0; i < _allHistoryItems.Count; i++)
+            {
+                if (_allHistoryItems[i] == item)
+                {
+                    RemoveItem(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void SetSelection(Object obj)
         {
             _skipNextSelection = true;
@@ -264,11 +274,30 @@ namespace Nomad.EditorUtilities
             EditorGUIUtility.PingObject(item.Object);
             UpdatedHistory?.Invoke();
         }
-
-        private static void Log(string message)
+        
+        /// Scan all history. Remove missing assets and find objects in the current context.
+        private static void SanitizeAllHistory()
         {
-            if (!_verboseLogs) return;
-            Debug.Log($"[{nameof(SelectionNavigator)}] {message}."); 
+            for (var i = _allHistoryItems.Count - 1; i >= 0; i--)
+            {
+                var item = _allHistoryItems[i];
+                if (item.Object == null)
+                {
+                    if (item.Data.ContextType is ContextType.Project)
+                    {
+                        RemoveItem(i); // Remove missing asset.
+                    }
+                    else if (item.IsContextValid)
+                    {
+                        item.Object = GameObject.Find(item.Data.ObjectPath); // Find an object within the current context.
+                    }
+                    else
+                    {
+                        // Debug.Log($"invalid context for {item.Data.ObjectPath}");
+                    }
+                    // else Debug.LogError($"Could not resolve item in the current context. ({item.Data.PathFromContext})");
+                }
+            }
         }
 
         #endregion
@@ -280,8 +309,8 @@ namespace Nomad.EditorUtilities
             _allHistoryItems.Clear();
             _historyContexts.Clear();
             _projectContext = new SelectionContext(null);
-            GetCurrentPrefabContext();
-            GetCurrentSceneContexts();
+            RefreshCurrentPrefabContext();
+            RefreshCurrentSceneContexts();
         }
 
         private static void SaveHistoryToDisk()
@@ -289,7 +318,7 @@ namespace Nomad.EditorUtilities
             var jsonBuilder = new StringBuilder();
             foreach (var item in _allHistoryItems)
             {
-                if (item.IsPinned) jsonBuilder.Append("*");
+                if (item.IsStarred) jsonBuilder.Append("*");
                 jsonBuilder.AppendLine(JsonUtility.ToJson(item.Data));
             }
 
@@ -304,27 +333,30 @@ namespace Nomad.EditorUtilities
 
             foreach (var line in lines)
             {
-                var isPinned = line.StartsWith("*");
-                var data = JsonUtility.FromJson<SerializableSelectionData>(isPinned ? line.Substring(1) : line);
-                var item = new SelectionItem(data) { IsPinned = isPinned };
+                var isStarred = line.StartsWith("*");
+                var data = JsonUtility.FromJson<SerializableSelectionData>(isStarred ? line.Substring(1) : line);
+                var item = new SelectionItem(data) { IsStarred = isStarred };
                 RecordItem(item);
             }
         }
 
         private static void LoadPreferences()
         {
-            _historyMaxSize = EditorPrefs.GetInt(PrefKey_HistorySize, 32);
+            _historySizeMax = EditorPrefs.GetInt(PrefKey_HistorySize, _historySizeMax);
+            if (_historySizeMax <= 0)
+            {
+                _historySizeMax = 32;
+                Debug.LogError($"Max history size must be greater than zero. Resetting to default. ({HistorySizeDefault})");
+                EditorPrefs.DeleteKey(PrefKey_HistorySize);
+            }
             _recordFolders = EditorPrefs.GetBool(PrefKey_RecordFolders, true);
             _recordPrefabStageObjects = EditorPrefs.GetBool(PrefKey_RecordPrefabs, false);
             _recordSceneObjects = EditorPrefs.GetBool(PrefKey_RecordScenes, true);
             _showInvalidContexts = EditorPrefs.GetBool(PrefKey_ShowInvalidContexts, true);
-            _verboseLogs = EditorPrefs.GetBool(PrefKey_VerboseLogs, true);
         }
 
         private static void DeletePreferences()
         {
-            // EditorPrefs.DeleteKey(PrefKey_Tab);
-            // EditorPrefs.DeleteKey(PrefKey_History);
             EditorPrefs.DeleteKey(PrefKey_HistorySize);
             EditorPrefs.DeleteKey(PrefKey_RecordFolders);
             EditorPrefs.DeleteKey(PrefKey_RecordPrefabs);
@@ -409,10 +441,11 @@ namespace Nomad.EditorUtilities
             internal readonly SceneAsset SceneAsset;
             internal readonly GameObject PrefabAsset;
             internal readonly string Guid;
+            internal readonly SelectionItem Self;
             internal readonly List<SelectionItem> Items = new();
             private double _lastClickTime;
 
-            private Object _object => Type switch
+            private Object Object => Type switch
             {
                 ContextType.Invalid => null,
                 ContextType.Project => null,
@@ -435,12 +468,14 @@ namespace Nomad.EditorUtilities
                 switch (contextObject)
                 {
                     case SceneAsset sceneAsset:
+                        Self = new SelectionItem(new SerializableSelectionData(sceneAsset));
                         Name = sceneAsset.name;
                         Type = ContextType.Scene;
                         SceneAsset = sceneAsset;
                         Guid = AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(sceneAsset)).ToString();
                         break;
                     case GameObject gameObject:
+                        Self = new SelectionItem(new SerializableSelectionData(gameObject));
                         Name = gameObject.name;
                         Type = ContextType.Prefab;
                         PrefabAsset = gameObject;
@@ -448,6 +483,7 @@ namespace Nomad.EditorUtilities
                         Debug.Assert(!gameObject.scene.IsValid()); // Prefab object should NOT be a GameObject instance in a scene.
                         break;
                     default:
+                        Self = null;
                         Name = "Project";
                         Type = ContextType.Project;
                         break;
@@ -456,7 +492,7 @@ namespace Nomad.EditorUtilities
 
             internal void OnClick()
             {
-                var obj = _object;
+                var obj = Object;
 
                 var clickTime = EditorApplication.timeSinceStartup;
                 if (clickTime - _lastClickTime < DoubleClickMaxDuration)
@@ -481,7 +517,7 @@ namespace Nomad.EditorUtilities
             internal Object Object;
 
             internal string Name;
-            internal bool IsPinned;
+            internal bool IsStarred;
 
             private double _lastClickTime;
 

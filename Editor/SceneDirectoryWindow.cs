@@ -18,11 +18,10 @@
 
 		[MenuItem("Nomad/Window/Scene Directory", false, 10)]
 		[MenuItem("Window/Nomad/Scene Directory", false, 10)]
-		internal static SceneDirectoryWindow ShowWindow()
+		internal static void ShowWindow()
 		{
 			var window = GetWindow<SceneDirectoryWindow>();
 			window.titleContent = new GUIContent("Directory", Icons.SceneDirectory16);
-			return window;
 		}
 
 		private void LoadAllScenes()

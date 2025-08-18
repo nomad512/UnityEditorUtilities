@@ -9,7 +9,7 @@ namespace Nomad.EditorUtilities
 	using UnityEditor;
 
 	// TODO: OpenCmd for MacOS
-	// TODO: OpenExploerer for MacOS	
+	// TODO: OpenExplorer for MacOS	
 	// TODO: OpenEditorLog for MacOS
 
 	/// <summary>
@@ -46,9 +46,8 @@ namespace Nomad.EditorUtilities
 		private static string _gitUrl => SessionState.GetString(kSessionKey_GitUrl, "");
 		private static string _gitDescribe;
 
-		private static ProjectAction[] _actions = new ProjectAction[]
-		{
-			new ProjectAction()
+		private static readonly ProjectAction[] _actions = {
+			new()
 			{
 				Label = "Open CLI",
 				Action = OpenCmd,
@@ -56,7 +55,7 @@ namespace Nomad.EditorUtilities
 				Tooltip = "Launch a CMD window in project root.",
 				Hotkey = KeyCode.C,
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Open Explorer",
 				Action = OpenExplorer,
@@ -64,7 +63,7 @@ namespace Nomad.EditorUtilities
 				Tooltip = "Open the project in Explorer.",
 				Hotkey = KeyCode.E,
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Open Editor.log",
 				Action = OpenEditorLog,
@@ -72,34 +71,34 @@ namespace Nomad.EditorUtilities
 				Tooltip = "Open the log of the most recent editor session.",
 				Hotkey = KeyCode.L,
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Open Git URL",
 				Action = OpenGitUrl,
-				CanExecute = () => { return !string.IsNullOrEmpty(_gitUrl); },
+				CanExecute = () => !string.IsNullOrEmpty(_gitUrl),
 				Tooltip = "Go to the Git URL in a web browser.",
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Hierarchy Analyzer",
-				Action = () => HierarchyAnalyzer.ShowWindow(),
-				CanExecute = () => { return true; },
+				Action = HierarchyAnalyzer.ShowWindow,
+				CanExecute = () => true,
 				Tooltip = "Open the Hierarchy Analyzer window.",
 				Hotkey = KeyCode.H,
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Scene Directory",
-				Action = () => SceneDirectoryWindow.ShowWindow(),
-				CanExecute = () => { return true; },
+				Action = SceneDirectoryWindow.ShowWindow,
+				CanExecute = () => true,
 				Tooltip = "Open the Scene Directory window.",
 				Hotkey = KeyCode.D,
 			},
-			new ProjectAction()
+			new()
 			{
 				Label = "Selection Navigator",
-				Action = () => SelectionNavigator.Window.ShowWindow(),
-				CanExecute = () => { return true; },
+				Action = SelectionNavigator.Window.ShowWindow,
+				CanExecute = () => true,
 				Tooltip = "Open the Project Navigator window.",
 				Hotkey = KeyCode.S,
 			},
