@@ -27,11 +27,11 @@
 		/// <returns></returns>
 		private static AssemblyDefinitionAsset FindEditorAssembly(MonoScript monoScript)
 		{
-			string sourceAsmName = monoScript.GetClass().Assembly.GetName().Name; // Cache the assembly name to compare to assemblies referenced by name
-			string editorAsmName = $"{sourceAsmName}.Editor";
-
+			var sourceAsmName = monoScript.GetClass().Assembly.GetName().Name; // Cache the assembly name to compare to assemblies referenced by name
+			var editorAsmName = sourceAsmName.EndsWith("Runtime") ? sourceAsmName.Replace("Runtime", "Editor") : $"{sourceAsmName}.Editor";
+			
 			var allAsmdefGuids = AssetDatabase.FindAssets("t:asmdef", null);
-			for (int i = 0; i < allAsmdefGuids.Length; i++)
+			for (var i = 0; i < allAsmdefGuids.Length; i++)
 			{
 				var path = AssetDatabase.GUIDToAssetPath(allAsmdefGuids[i]);
 				var asmdef = AssetDatabase.LoadAssetAtPath<AssemblyDefinitionAsset>(path);
