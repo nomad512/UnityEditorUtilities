@@ -23,11 +23,10 @@ namespace Nomad.EditorUtilities
 		#region EditorWindow
 		[MenuItem("Nomad/Window/Hierarchy Analyzer", false, 10)]
 		[MenuItem("Window/Nomad/Hierarchy Analyzer", false, 10)]
-		internal static HierarchyAnalyzer ShowWindow()
+		internal static void ShowWindow()
 		{
 			var window = GetWindow<HierarchyAnalyzer>();
-			window.titleContent = new GUIContent("Hierachy Analyzer", Icons.Hierarchy16);
-			return window;
+			window.titleContent = new GUIContent("Hierarchy Analyzer", Icons.Hierarchy16);
 		}
 
 		private void OnEnable()

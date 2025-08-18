@@ -1,12 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEditor;
 
 namespace Nomad.EditorUtilities
 {
-    
     // TODO: drag-and-drop new favorites
+    // TODO: right-click context menu for selectable items
     internal partial class SelectionNavigator
     {
         internal class Window : EditorWindow
@@ -42,14 +43,6 @@ namespace Nomad.EditorUtilities
             [MenuItem("Nomad/Window/Selection Navigator", false, 10)]
             [MenuItem("Window/Nomad/Selection Navigator", false, 10)]
             internal static void ShowWindow() => GetWindow<Window>();
-
-
-            // Called when an edit is made to the history.
-            private void OnUpdatedHistory()
-            {
-                _shouldScrollToSelection = true;
-                Repaint();
-            }
 
             private void OnEnable()
             {
@@ -100,6 +93,13 @@ namespace Nomad.EditorUtilities
                 UpdateKeys();
 
                 // _shouldScrollToSelection = false;
+            }
+
+            // Called when an edit is made to the history.
+            private void OnUpdatedHistory()
+            {
+                _shouldScrollToSelection = true;
+                Repaint();
             }
 
             private void UpdateKeys()
