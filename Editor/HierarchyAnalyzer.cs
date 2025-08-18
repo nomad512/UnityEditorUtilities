@@ -111,6 +111,7 @@ namespace Nomad.EditorUtilities
 						if (GUILayout.Button(go.name))
 						{
 							Selection.activeObject = go;
+							EditorGUIUtility.PingObject(go);
 						}
 					}
 					GUILayout.Space(5);
